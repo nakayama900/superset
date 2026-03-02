@@ -137,7 +137,7 @@ describe("agent-wrappers copilot", () => {
 		expect(wrapper).toContain("_superset_turn_id=$(printf");
 		expect(wrapper).toContain("_superset_approval_id=$(printf");
 		expect(wrapper).toContain('awk -F\'"turn_id":"\'');
-		expect(wrapper).toContain('"approval_request"');
+		expect(wrapper).toContain('_approval_request"');
 		expect(wrapper).toContain('awk -F\'"approval_id":"\'');
 		expect(wrapper).toContain('_superset_emit_event "Start"');
 		expect(wrapper).toContain('_superset_emit_event "PermissionRequest"');

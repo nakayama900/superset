@@ -1,6 +1,6 @@
 # Codex exposes completion notifications via notify.
 # For per-prompt Start notifications and permission requests, watch the TUI
-# session log for task_started and approval_request events.
+# session log for task_started and *_approval_request events.
 if [ -n "$SUPERSET_TAB_ID" ] && [ -f "{{NOTIFY_PATH}}" ]; then
   _superset_debug_hooks="1"
   if [ -n "$SUPERSET_DEBUG_HOOKS" ]; then
@@ -60,7 +60,7 @@ if [ -n "$SUPERSET_TAB_ID" ] && [ -f "{{NOTIFY_PATH}}" ]; then
             _superset_emit_event "Start"
           fi
           ;;
-        *'"dir":"to_tui"'*'"kind":"codex_event"'*'"approval_request"'*)
+        *'"dir":"to_tui"'*'"kind":"codex_event"'*'"type":"'*'_approval_request"'*)
           _superset_approval_id=$(printf '%s\n' "$_superset_line" | awk -F'"id":"' 'NF > 1 { sub(/".*/, "", $2); print $2; exit }')
           [ -n "$_superset_approval_id" ] || _superset_approval_id=$(printf '%s\n' "$_superset_line" | awk -F'"approval_id":"' 'NF > 1 { sub(/".*/, "", $2); print $2; exit }')
           [ -n "$_superset_approval_id" ] || _superset_approval_id=$(printf '%s\n' "$_superset_line" | awk -F'"call_id":"' 'NF > 1 { sub(/".*/, "", $2); print $2; exit }')
