@@ -132,13 +132,15 @@ describe("agent-wrappers copilot", () => {
 		expect(wrapper).toContain('"type":"task_started"');
 		expect(wrapper).toContain('_superset_last_turn_id=""');
 		expect(wrapper).toContain('_superset_last_approval_id=""');
+		expect(wrapper).toContain('_superset_debug_hooks="0"');
+		expect(wrapper).toContain('_superset_emit_event()');
 		expect(wrapper).toContain("_superset_turn_id=$(printf");
 		expect(wrapper).toContain("_superset_approval_id=$(printf");
 		expect(wrapper).toContain('awk -F\'"turn_id":"\'');
 		expect(wrapper).toContain('"approval_request"');
 		expect(wrapper).toContain('awk -F\'"approval_id":"\'');
-		expect(wrapper).toContain('{"hook_event_name":"Start"}');
-		expect(wrapper).toContain('{"hook_event_name":"PermissionRequest"}');
+		expect(wrapper).toContain('_superset_emit_event "Start"');
+		expect(wrapper).toContain('_superset_emit_event "PermissionRequest"');
 		expect(wrapper).toContain(
 			`"$REAL_BIN" -c 'notify=["bash","${path.join(TEST_HOOKS_DIR, "notify.sh")}"]' "$@"`,
 		);
