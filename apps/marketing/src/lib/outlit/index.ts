@@ -1,6 +1,7 @@
 import { Outlit } from "@outlit/browser";
 
 import { env } from "@/env";
+import { ANALYTICS_CONSENT_KEY } from "@/lib/constants";
 
 let instance: Outlit | undefined;
 
@@ -11,6 +12,14 @@ export function getOutlit(): Outlit {
 			trackPageviews: true,
 			trackForms: true,
 		});
+
+		// Respect prior consent choice — disable tracking if user previously opted out
+		if (
+			typeof window !== "undefined" &&
+			localStorage.getItem(ANALYTICS_CONSENT_KEY) === "declined"
+		) {
+			instance.disableTracking();
+		}
 	}
 	return instance;
 }
