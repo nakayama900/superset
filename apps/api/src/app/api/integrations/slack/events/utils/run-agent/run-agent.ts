@@ -1,12 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { WebClient } from "@slack/web-api";
-import { db } from "@superset/db/client";
-import { integrationConnections } from "@superset/db/schema";
-import { and, eq } from "drizzle-orm";
 import { env } from "@/env";
 import { DEFAULT_SLACK_MODEL } from "../../../constants";
 import type { AgentAction } from "../slack-blocks";
+import type { SlackImageAsset } from "../slack-image-assets";
 import {
 	createSupersetMcpClient,
 	mcpToolToAnthropicTool,
@@ -113,8 +111,10 @@ interface RunSlackAgentParams {
 	channelId: string;
 	threadTs: string;
 	organizationId: string;
+	userId: string;
 	slackToken: string;
 	model?: string;
+	images?: SlackImageAsset[];
 	onProgress?: (status: string) => void | Promise<void>;
 }
 
@@ -212,10 +212,7 @@ function getActionFromToolResult(
 		};
 	}
 
-	if (
-		(toolName === "switch_workspace" || toolName === "navigate_to_workspace") &&
-		data.workspaceId
-	) {
+	if (toolName === "switch_workspace" && data.workspaceId) {
 		return {
 			type: "workspace_switched",
 			workspaces: [
@@ -248,6 +245,22 @@ function parseTextContent(content: any): Record<string, unknown> | null {
 	}
 }
 
+/**
+ * Strip server-side web search content blocks (search results + tool invocations)
+ * from assistant messages to prevent context bloat in subsequent API calls.
+ * The text blocks already contain the synthesized answer with citations,
+ * so the raw search results aren't needed for tool execution.
+ */
+function stripServerToolBlocks(
+	content: Anthropic.ContentBlock[],
+): Anthropic.ContentBlockParam[] {
+	return content.filter(
+		(block) =>
+			block.type !== "web_search_tool_result" &&
+			block.type !== "server_tool_use",
+	) as unknown as Anthropic.ContentBlockParam[];
+}
+
 const TOOL_PROGRESS_STATUS: Record<string, string> = {
 	create_task: "Creating task...",
 	update_task: "Updating task...",
@@ -262,7 +275,6 @@ const TOOL_PROGRESS_STATUS: Record<string, string> = {
 
 // Tools excluded from Slack agent context
 const DENIED_SUPERSET_TOOLS = new Set([
-	"navigate_to_workspace",
 	"switch_workspace",
 	"get_app_context",
 	"list_members",
@@ -411,23 +423,47 @@ async function fetchAgentContext({
 	return sections.join("\n\n");
 }
 
+function buildUserMessageContent({
+	prompt,
+	threadContext,
+	images,
+}: {
+	prompt: string;
+	threadContext: string;
+	images: SlackImageAsset[] | undefined;
+}): string | Anthropic.ContentBlockParam[] {
+	const textContent = threadContext
+		? `${threadContext}\n\nCurrent message:\n${prompt}`
+		: prompt;
+
+	if (!images || images.length === 0) {
+		return textContent;
+	}
+
+	const content: Anthropic.ContentBlockParam[] = [];
+	if (textContent.trim().length > 0) {
+		content.push({ type: "text", text: textContent });
+	}
+
+	for (const image of images) {
+		content.push({
+			type: "image",
+			source: {
+				type: "base64",
+				media_type: image.mediaType,
+				data: image.base64Data,
+			},
+		});
+	}
+
+	return content;
+}
+
 export async function runSlackAgent(
 	params: RunSlackAgentParams,
 ): Promise<SlackAgentResult> {
 	const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 	const actions: AgentAction[] = [];
-
-	const connection = await db.query.integrationConnections.findFirst({
-		where: and(
-			eq(integrationConnections.organizationId, params.organizationId),
-			eq(integrationConnections.provider, "slack"),
-		),
-		columns: { connectedByUserId: true },
-	});
-
-	if (!connection) {
-		throw new Error("Slack connection not found");
-	}
 
 	let supersetMcp: Client | null = null;
 	let cleanupSuperset: (() => Promise<void>) | null = null;
@@ -441,7 +477,7 @@ export async function runSlackAgent(
 			}),
 			createSupersetMcpClient({
 				organizationId: params.organizationId,
-				userId: connection.connectedByUserId,
+				userId: params.userId,
 			}),
 		]);
 
@@ -452,7 +488,7 @@ export async function runSlackAgent(
 			supersetMcp.listTools(),
 			fetchAgentContext({
 				mcpClient: supersetMcp,
-				userId: connection.connectedByUserId,
+				userId: params.userId,
 			}),
 		]);
 
@@ -466,7 +502,7 @@ export async function runSlackAgent(
 			{
 				type: "web_search_20250305" as const,
 				name: "web_search" as const,
-				max_uses: 1,
+				max_uses: 5,
 			},
 		];
 
@@ -479,9 +515,11 @@ Current context:
 
 ${agentContext}`;
 
-		const userContent = threadContext
-			? `${threadContext}\n\nCurrent message:\n${params.prompt}`
-			: params.prompt;
+		const userContent = buildUserMessageContent({
+			prompt: params.prompt,
+			threadContext,
+			images: params.images,
+		});
 
 		const messages: Anthropic.MessageParam[] = [
 			{
@@ -609,7 +647,10 @@ ${agentContext}`;
 				}
 			}
 
-			messages.push({ role: "assistant", content: response.content });
+			messages.push({
+				role: "assistant",
+				content: stripServerToolBlocks(response.content),
+			});
 			messages.push({ role: "user", content: toolResults });
 
 			response = await anthropic.messages.create({

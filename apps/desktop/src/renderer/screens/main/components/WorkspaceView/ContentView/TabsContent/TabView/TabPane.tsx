@@ -15,7 +15,6 @@ import { BasePaneWindow, PaneToolbarActions } from "./components";
 interface TabPaneProps {
 	paneId: string;
 	path: MosaicBranch[];
-	isActive: boolean;
 	tabId: string;
 	workspaceId: string;
 	splitPaneAuto: (
@@ -44,7 +43,6 @@ interface TabPaneProps {
 export function TabPane({
 	paneId,
 	path,
-	isActive,
 	tabId,
 	workspaceId,
 	splitPaneAuto,
@@ -64,6 +62,10 @@ export function TabPane({
 	const getScrollToBottomCallback = useTerminalCallbacksStore(
 		(s) => s.getScrollToBottomCallback,
 	);
+	const getGetSelectionCallback = useTerminalCallbacksStore(
+		(s) => s.getGetSelectionCallback,
+	);
+	const getPasteCallback = useTerminalCallbacksStore((s) => s.getPasteCallback);
 
 	useEffect(() => {
 		const container = terminalContainerRef.current;
@@ -88,7 +90,6 @@ export function TabPane({
 			paneId={paneId}
 			path={path}
 			tabId={tabId}
-			isActive={isActive}
 			splitPaneAuto={splitPaneAuto}
 			removePane={removePane}
 			setFocusedPane={setFocusedPane}
@@ -117,10 +118,13 @@ export function TabPane({
 				onClosePane={() => removePane(paneId)}
 				onClearTerminal={handleClearTerminal}
 				onScrollToBottom={handleScrollToBottom}
+				getSelection={() => getGetSelectionCallback(paneId)?.() ?? ""}
+				onPaste={(text) => getPasteCallback(paneId)?.(text)}
 				currentTabId={tabId}
 				availableTabs={availableTabs}
 				onMoveToTab={onMoveToTab}
 				onMoveToNewTab={onMoveToNewTab}
+				closeLabel="Close Terminal"
 			>
 				<div ref={terminalContainerRef} className="w-full h-full">
 					<Terminal paneId={paneId} tabId={tabId} workspaceId={workspaceId} />

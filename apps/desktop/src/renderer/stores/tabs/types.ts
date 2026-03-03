@@ -1,16 +1,27 @@
 import type { MosaicBranch, MosaicNode } from "react-mosaic-component";
-import type { ChangeCategory } from "shared/changes-types";
+import type { ChangeCategory, FileStatus } from "shared/changes-types";
 import type {
 	BaseTab,
 	BaseTabsState,
+	BrowserLoadError,
 	FileViewerMode,
 	Pane,
 	PaneStatus,
 	PaneType,
+	ViewportPreset,
 } from "shared/tabs-types";
 
 // Re-export shared types
 export type { Pane, PaneStatus, PaneType };
+
+/**
+ * Snapshot of a closed tab + its panes, used for "reopen closed tab".
+ */
+export interface ClosedTabEntry {
+	tab: Tab;
+	panes: Pane[];
+	closedAt: number;
+}
 
 /**
  * A Tab is a container that holds one or more Panes in a Mosaic layout.
@@ -26,13 +37,13 @@ export interface Tab extends BaseTab {
  */
 export interface TabsState extends Omit<BaseTabsState, "tabs"> {
 	tabs: Tab[];
+	closedTabsStack: ClosedTabEntry[];
 }
 
 /**
  * Options for creating a tab with preset configuration
  */
 export interface AddTabOptions {
-	initialCommands?: string[];
 	initialCwd?: string;
 }
 
@@ -49,6 +60,8 @@ export interface AddFileViewerPaneOptions {
 	/** Override default view mode (raw/diff/rendered) */
 	viewMode?: FileViewerMode;
 	diffCategory?: ChangeCategory;
+	/** File status from git — used to determine default view mode for new files */
+	fileStatus?: FileStatus;
 	commitHash?: string;
 	oldPath?: string;
 	/** Line to scroll to (raw mode only) */
@@ -70,7 +83,7 @@ export interface TabsStore extends TabsState {
 		workspaceId: string,
 		options?: AddTabOptions,
 	) => { tabId: string; paneId: string };
-	addChatTab: (workspaceId: string) => { tabId: string; paneId: string };
+	addChatMastraTab: (workspaceId: string) => { tabId: string; paneId: string };
 	addTabWithMultiplePanes: (
 		workspaceId: string,
 		options: AddTabWithMultiplePanesOptions,
@@ -103,6 +116,7 @@ export interface TabsStore extends TabsState {
 	setPaneStatus: (paneId: string, status: PaneStatus) => void;
 	setPaneName: (paneId: string, name: string) => void;
 	clearWorkspaceAttentionStatus: (workspaceId: string) => void;
+	resetWorkspaceStatus: (workspaceId: string) => void;
 	updatePaneCwd: (
 		paneId: string,
 		cwd: string | null,
@@ -137,9 +151,38 @@ export interface TabsStore extends TabsState {
 	movePaneToTab: (paneId: string, targetTabId: string) => void;
 	movePaneToNewTab: (paneId: string) => string;
 
+	// Browser operations
+	addBrowserTab: (
+		workspaceId: string,
+		url?: string,
+	) => { tabId: string; paneId: string };
+	openInBrowserPane: (workspaceId: string, url: string) => void;
+	updateBrowserUrl: (
+		paneId: string,
+		url: string,
+		title: string,
+		faviconUrl?: string,
+	) => void;
+	navigateBrowserHistory: (
+		paneId: string,
+		direction: "back" | "forward",
+	) => string | null;
+	updateBrowserLoading: (paneId: string, isLoading: boolean) => void;
+	setBrowserError: (paneId: string, error: BrowserLoadError | null) => void;
+	setBrowserViewport: (paneId: string, viewport: ViewportPreset | null) => void;
+	openDevToolsPane: (
+		tabId: string,
+		browserPaneId: string,
+		path?: MosaicBranch[],
+	) => string | null;
+
+	// Reopen operations
+	/** Reopen the last closed tab for a workspace. Returns true if a tab was reopened. */
+	reopenClosedTab: (workspaceId: string) => boolean;
+
 	// Chat operations
-	/** Switch a chat pane to a different session */
-	switchChatSession: (paneId: string, sessionId: string) => void;
+	/** Switch a Mastra chat pane to a different session */
+	switchChatMastraSession: (paneId: string, sessionId: string | null) => void;
 
 	// Query helpers
 	getTabsByWorkspace: (workspaceId: string) => Tab[];

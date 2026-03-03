@@ -11,14 +11,37 @@ export async function GET(request: Request): Promise<Response> {
 		return new Response("Unauthorized", { status: 401 });
 	}
 
-	const organizationId = sessionData.session.activeOrganizationId;
-	if (!organizationId) {
-		return new Response("No active organization", { status: 400 });
+	const url = new URL(request.url);
+
+	// Use client-sent organizationId, falling back to session for older clients.
+	// TODO(2026-02-26): Remove activeOrganizationId fallback once all clients send organizationId param.
+	const organizationId =
+		url.searchParams.get("organizationId") ??
+		sessionData.session.activeOrganizationId;
+	const allowedOrgIds = sessionData.session.organizationIds ?? [];
+
+	if (organizationId && !allowedOrgIds.includes(organizationId)) {
+		return new Response("Not a member of this organization", { status: 403 });
 	}
 
-	const url = new URL(request.url);
-	const originUrl = new URL(env.ELECTRIC_URL);
-	originUrl.searchParams.set("secret", env.ELECTRIC_SECRET);
+	const useCloud =
+		env.ELECTRIC_SOURCE_ID &&
+		env.ELECTRIC_SOURCE_SECRET &&
+		(request.headers.get("x-electric-backend") === "cloud" ||
+			sessionData.user.email?.endsWith("@superset.sh"));
+
+	const originUrl = useCloud
+		? new URL("/v1/shape", "https://api.electric-sql.cloud")
+		: new URL(env.ELECTRIC_URL);
+
+	if (useCloud) {
+		// biome-ignore lint/style/noNonNullAssertion: guarded by useCloud check above
+		originUrl.searchParams.set("source_id", env.ELECTRIC_SOURCE_ID!);
+		// biome-ignore lint/style/noNonNullAssertion: guarded by useCloud check above
+		originUrl.searchParams.set("secret", env.ELECTRIC_SOURCE_SECRET!);
+	} else {
+		originUrl.searchParams.set("secret", env.ELECTRIC_SECRET);
+	}
 
 	url.searchParams.forEach((value, key) => {
 		if (ELECTRIC_PROTOCOL_QUERY_PARAMS.includes(key)) {
@@ -33,7 +56,7 @@ export async function GET(request: Request): Promise<Response> {
 
 	const whereClause = await buildWhereClause(
 		tableName,
-		organizationId,
+		organizationId ?? "",
 		sessionData.user.id,
 	);
 	if (!whereClause) {
@@ -53,18 +76,26 @@ export async function GET(request: Request): Promise<Response> {
 		);
 	}
 
-	let response = await fetch(originUrl.toString());
-
-	if (response.headers.get("content-encoding")) {
-		const headers = new Headers(response.headers);
-		headers.delete("content-encoding");
-		headers.delete("content-length");
-		response = new Response(response.body, {
-			status: response.status,
-			statusText: response.statusText,
-			headers,
-		});
+	if (tableName === "integration_connections") {
+		originUrl.searchParams.set(
+			"columns",
+			"id,organization_id,connected_by_user_id,provider,token_expires_at,external_org_id,external_org_name,config,created_at,updated_at",
+		);
 	}
 
-	return response;
+	const response = await fetch(originUrl.toString());
+
+	const headers = new Headers(response.headers);
+	headers.append("Vary", "Authorization, X-Electric-Backend");
+
+	if (headers.get("content-encoding")) {
+		headers.delete("content-encoding");
+		headers.delete("content-length");
+	}
+
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers,
+	});
 }

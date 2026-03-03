@@ -15,6 +15,7 @@ import { HiMiniMinus, HiMiniPlus } from "react-icons/hi2";
 import { LuUndo2 } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useBranchSyncInvalidation } from "renderer/screens/main/hooks/useBranchSyncInvalidation";
+import { useGitChangesStatus } from "renderer/screens/main/hooks/useGitChangesStatus";
 import { useChangesStore } from "renderer/stores/changes";
 import type { ChangeCategory, ChangedFile } from "shared/changes-types";
 import { CategorySection } from "./components/CategorySection";
@@ -22,6 +23,7 @@ import { ChangesHeader } from "./components/ChangesHeader";
 import { CommitInput } from "./components/CommitInput";
 import { CommitItem } from "./components/CommitItem";
 import { FileList } from "./components/FileList";
+import { getPRActionState } from "./utils";
 
 interface ChangesViewProps {
 	onFileOpen?: (
@@ -39,37 +41,26 @@ export function ChangesView({ onFileOpen, isExpandedView }: ChangesViewProps) {
 		{ enabled: !!workspaceId },
 	);
 	const worktreePath = workspace?.worktreePath;
+	const projectId = workspace?.projectId;
 
-	const { getBaseBranch } = useChangesStore();
-	const baseBranch = getBaseBranch(worktreePath || "");
-	const { data: branchData } = electronTrpc.changes.getBranches.useQuery(
-		{ worktreePath: worktreePath || "" },
-		{ enabled: !!worktreePath },
-	);
-
-	const effectiveBaseBranch = baseBranch ?? branchData?.defaultBranch ?? "main";
-
-	const {
-		data: status,
-		isLoading,
-		refetch,
-	} = electronTrpc.changes.getStatus.useQuery(
-		{ worktreePath: worktreePath || "", defaultBranch: effectiveBaseBranch },
-		{
-			enabled: !!worktreePath,
+	const { status, isLoading, effectiveBaseBranch, branchData, refetch } =
+		useGitChangesStatus({
+			worktreePath,
 			refetchInterval: 2500,
 			refetchOnWindowFocus: true,
+		});
+
+	const {
+		data: githubStatus,
+		isLoading: isGitHubStatusLoading,
+		refetch: refetchGithubStatus,
+	} = electronTrpc.workspaces.getGitHubStatus.useQuery(
+		{ workspaceId: workspaceId ?? "" },
+		{
+			enabled: !!workspaceId,
+			refetchInterval: 10000,
 		},
 	);
-
-	const { data: githubStatus, refetch: refetchGithubStatus } =
-		electronTrpc.workspaces.getGitHubStatus.useQuery(
-			{ workspaceId: workspaceId ?? "" },
-			{
-				enabled: !!workspaceId,
-				refetchInterval: 10000,
-			},
-		);
 
 	useBranchSyncInvalidation({
 		gitBranch: status?.branch,
@@ -111,6 +102,28 @@ export function ChangesView({ onFileOpen, isExpandedView }: ChangesViewProps) {
 		onError: (error, variables) => {
 			console.error(`Failed to unstage file ${variables.filePath}:`, error);
 			toast.error(`Failed to unstage ${variables.filePath}: ${error.message}`);
+		},
+	});
+
+	const stageFilesMutation = electronTrpc.changes.stageFiles.useMutation({
+		onSuccess: () => refetch(),
+		onError: (error, variables) => {
+			console.error(
+				`Failed to stage files ${variables.filePaths.join(", ")}:`,
+				error,
+			);
+			toast.error(`Failed to stage files: ${error.message}`);
+		},
+	});
+
+	const unstageFilesMutation = electronTrpc.changes.unstageFiles.useMutation({
+		onSuccess: () => refetch(),
+		onError: (error, variables) => {
+			console.error(
+				`Failed to unstage files ${variables.filePaths.join(", ")}:`,
+				error,
+			);
+			toast.error(`Failed to unstage files: ${error.message}`);
 		},
 	});
 
@@ -329,6 +342,19 @@ export function ChangesView({ onFileOpen, isExpandedView }: ChangesViewProps) {
 	const hasStagedChanges = status.staged.length > 0;
 	const hasExistingPR = !!githubStatus?.pr;
 	const prUrl = githubStatus?.pr?.url;
+	const hasGitHubRepo = !!githubStatus?.repoUrl;
+	const defaultBranch = branchData?.defaultBranch ?? status.defaultBranch;
+	const isDefaultBranch = status.branch === defaultBranch;
+	const prActionState = getPRActionState({
+		hasRepo: hasGitHubRepo,
+		hasExistingPR,
+		hasUpstream: status.hasUpstream,
+		pushCount: status.pushCount,
+		pullCount: status.pullCount,
+		isDefaultBranch,
+	});
+	const shouldAutoCreatePRAfterPublish =
+		hasGitHubRepo && !isDefaultBranch && !hasExistingPR;
 
 	return (
 		<div className="flex flex-col flex-1 min-h-0">
@@ -337,7 +363,10 @@ export function ChangesView({ onFileOpen, isExpandedView }: ChangesViewProps) {
 				viewMode={fileListViewMode}
 				onViewModeChange={setFileListViewMode}
 				worktreePath={worktreePath}
-				workspaceId={workspaceId}
+				pr={githubStatus?.pr ?? null}
+				isPRStatusLoading={isGitHubStatusLoading}
+				canCreatePR={prActionState.canCreatePR}
+				createPRBlockedReason={prActionState.createPRBlockedReason}
 				onStash={() => stashMutation.mutate({ worktreePath })}
 				onStashIncludeUntracked={() =>
 					stashIncludeUntrackedMutation.mutate({ worktreePath })
@@ -357,6 +386,8 @@ export function ChangesView({ onFileOpen, isExpandedView }: ChangesViewProps) {
 				pullCount={status.pullCount}
 				hasUpstream={status.hasUpstream}
 				hasExistingPR={hasExistingPR}
+				canCreatePR={prActionState.canCreatePR}
+				shouldAutoCreatePRAfterPublish={shouldAutoCreatePRAfterPublish}
 				prUrl={prUrl}
 				onRefresh={handleRefresh}
 			/>
@@ -380,6 +411,7 @@ export function ChangesView({ onFileOpen, isExpandedView }: ChangesViewProps) {
 							selectedCommitHash={selectedCommitHash}
 							onFileSelect={(file) => handleFileSelect(file, "against-base")}
 							worktreePath={worktreePath}
+							projectId={projectId}
 							category="against-base"
 							isExpandedView={isExpandedView}
 						/>
@@ -402,6 +434,7 @@ export function ChangesView({ onFileOpen, isExpandedView }: ChangesViewProps) {
 								onFileSelect={handleCommitFileSelect}
 								viewMode={fileListViewMode}
 								worktreePath={worktreePath}
+								projectId={projectId}
 								isExpandedView={isExpandedView}
 							/>
 						))}
@@ -463,8 +496,20 @@ export function ChangesView({ onFileOpen, isExpandedView }: ChangesViewProps) {
 									filePath: file.path,
 								})
 							}
-							isActioning={unstageFileMutation.isPending}
+							onUnstageFiles={(files) =>
+								unstageFilesMutation.mutate({
+									worktreePath: worktreePath || "",
+									filePaths: files.map((f) => f.path),
+								})
+							}
+							isActioning={
+								unstageFileMutation.isPending ||
+								unstageFilesMutation.isPending ||
+								unstageAllMutation.isPending ||
+								discardAllStagedMutation.isPending
+							}
 							worktreePath={worktreePath}
+							projectId={projectId}
 							category="staged"
 							isExpandedView={isExpandedView}
 						/>
@@ -526,12 +571,22 @@ export function ChangesView({ onFileOpen, isExpandedView }: ChangesViewProps) {
 									filePath: file.path,
 								})
 							}
+							onStageFiles={(files) =>
+								stageFilesMutation.mutate({
+									worktreePath: worktreePath || "",
+									filePaths: files.map((f) => f.path),
+								})
+							}
 							isActioning={
 								stageFileMutation.isPending ||
+								stageFilesMutation.isPending ||
+								stageAllMutation.isPending ||
 								discardChangesMutation.isPending ||
-								deleteUntrackedMutation.isPending
+								deleteUntrackedMutation.isPending ||
+								discardAllUnstagedMutation.isPending
 							}
 							worktreePath={worktreePath}
+							projectId={projectId}
 							onDiscard={handleDiscard}
 							category="unstaged"
 							isExpandedView={isExpandedView}

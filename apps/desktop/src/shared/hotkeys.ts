@@ -508,6 +508,12 @@ export const HOTKEYS = {
 		category: "Terminal",
 		description: "Search text in the active terminal",
 	}),
+	FIND_IN_FILE_VIEWER: defineHotkey({
+		keys: "meta+f",
+		label: "Find in File Viewer",
+		category: "Terminal",
+		description: "Search text in the rendered file viewer",
+	}),
 	NEW_GROUP: defineHotkey({
 		keys: "meta+t",
 		label: "New Terminal",
@@ -518,10 +524,26 @@ export const HOTKEYS = {
 		label: "New Chat",
 		category: "Terminal",
 	}),
+	REOPEN_TAB: defineHotkey({
+		keys: "meta+shift+r",
+		label: "Reopen Closed Tab",
+		category: "Terminal",
+	}),
+	NEW_BROWSER: defineHotkey({
+		keys: "meta+shift+b",
+		label: "New Browser",
+		category: "Terminal",
+	}),
 	CLOSE_TERMINAL: defineHotkey({
 		keys: "meta+w",
 		label: "Close Terminal",
 		category: "Terminal",
+	}),
+	CLOSE_TAB: defineHotkey({
+		keys: "meta+shift+w",
+		label: "Close Tab",
+		category: "Terminal",
+		description: "Close the current tab",
 	}),
 	CLEAR_TERMINAL: defineHotkey({
 		keys: "meta+k",
@@ -697,7 +719,7 @@ export const HOTKEYS = {
 		isHidden: true,
 	}),
 	CLOSE_WINDOW: defineHotkey({
-		keys: "meta+shift+w",
+		keys: "meta+shift+q",
 		label: "Close Window",
 		category: "Window",
 	}),
@@ -712,6 +734,37 @@ export const HOTKEYS = {
 		label: "Copy Path",
 		category: "Window",
 		description: "Copy the workspace path to the clipboard",
+	}),
+
+	QUICK_OPEN: defineHotkey({
+		keys: "meta+p",
+		label: "Quick Open File",
+		category: "Navigation",
+		description: "Search and open files in the current workspace",
+	}),
+	KEYWORD_SEARCH: defineHotkey({
+		keys: "meta+shift+f",
+		label: "Keyword Search",
+		category: "Navigation",
+		description:
+			"Search for keyword matches across files in the current workspace",
+	}),
+
+	// Chat
+	FOCUS_CHAT_INPUT: defineHotkey({
+		keys: "meta+f",
+		label: "Focus Chat Input",
+		category: "Terminal",
+	}),
+	CHAT_ADD_ATTACHMENT: defineHotkey({
+		keys: "meta+u",
+		label: "Add Attachment",
+		category: "Terminal",
+	}),
+	CHAT_LINK_ISSUE: defineHotkey({
+		keys: "meta+i",
+		label: "Link Issue",
+		category: "Terminal",
 	}),
 
 	// Help

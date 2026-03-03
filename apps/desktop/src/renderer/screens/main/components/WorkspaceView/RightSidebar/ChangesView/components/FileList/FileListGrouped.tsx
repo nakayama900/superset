@@ -11,12 +11,15 @@ interface FileListGroupedProps {
 	showStats?: boolean;
 	onStage?: (file: ChangedFile) => void;
 	onUnstage?: (file: ChangedFile) => void;
+	onStageFiles?: (files: ChangedFile[]) => void;
+	onUnstageFiles?: (files: ChangedFile[]) => void;
 	isActioning?: boolean;
 	worktreePath: string;
 	onDiscard?: (file: ChangedFile) => void;
 	category?: ChangeCategory;
 	commitHash?: string;
 	isExpandedView?: boolean;
+	projectId?: string;
 }
 
 interface FolderGroup {
@@ -65,12 +68,15 @@ interface FolderGroupItemProps {
 	showStats?: boolean;
 	onStage?: (file: ChangedFile) => void;
 	onUnstage?: (file: ChangedFile) => void;
+	onStageFiles?: (files: ChangedFile[]) => void;
+	onUnstageFiles?: (files: ChangedFile[]) => void;
 	isActioning?: boolean;
 	worktreePath: string;
 	onDiscard?: (file: ChangedFile) => void;
 	category?: ChangeCategory;
 	commitHash?: string;
 	isExpandedView?: boolean;
+	projectId?: string;
 }
 
 function FolderGroupItem({
@@ -80,29 +86,38 @@ function FolderGroupItem({
 	showStats,
 	onStage,
 	onUnstage,
+	onStageFiles,
+	onUnstageFiles,
 	isActioning,
 	worktreePath,
 	onDiscard,
 	category,
 	commitHash,
 	isExpandedView,
+	projectId,
 }: FolderGroupItemProps) {
 	const [isExpanded, setIsExpanded] = useState(true);
 	const displayName = group.folderPath || "Root Path";
 
 	const handleStageAll = useCallback(() => {
-		if (!onStage) return;
-		for (const file of group.files) {
-			onStage(file);
+		if (onStageFiles) {
+			onStageFiles(group.files);
+		} else if (onStage) {
+			for (const file of group.files) {
+				onStage(file);
+			}
 		}
-	}, [group.files, onStage]);
+	}, [group.files, onStage, onStageFiles]);
 
 	const handleUnstageAll = useCallback(() => {
-		if (!onUnstage) return;
-		for (const file of group.files) {
-			onUnstage(file);
+		if (onUnstageFiles) {
+			onUnstageFiles(group.files);
+		} else if (onUnstage) {
+			for (const file of group.files) {
+				onUnstage(file);
+			}
 		}
-	}, [group.files, onUnstage]);
+	}, [group.files, onUnstage, onUnstageFiles]);
 
 	const handleDiscardAll = useCallback(() => {
 		if (!onDiscard) return;
@@ -120,8 +135,9 @@ function FolderGroupItem({
 			variant="grouped"
 			folderPath={group.folderPath}
 			worktreePath={worktreePath}
-			onStageAll={onStage ? handleStageAll : undefined}
-			onUnstageAll={onUnstage ? handleUnstageAll : undefined}
+			projectId={projectId}
+			onStageAll={onStage || onStageFiles ? handleStageAll : undefined}
+			onUnstageAll={onUnstage || onUnstageFiles ? handleUnstageAll : undefined}
 			onDiscardAll={onDiscard ? handleDiscardAll : undefined}
 			isActioning={isActioning}
 		>
@@ -136,6 +152,7 @@ function FolderGroupItem({
 					onUnstage={onUnstage ? () => onUnstage(file) : undefined}
 					isActioning={isActioning}
 					worktreePath={worktreePath}
+					projectId={projectId}
 					onDiscard={onDiscard ? () => onDiscard(file) : undefined}
 					category={category}
 					commitHash={commitHash}
@@ -153,12 +170,15 @@ export function FileListGrouped({
 	showStats = true,
 	onStage,
 	onUnstage,
+	onStageFiles,
+	onUnstageFiles,
 	isActioning,
 	worktreePath,
 	onDiscard,
 	category,
 	commitHash,
 	isExpandedView,
+	projectId,
 }: FileListGroupedProps) {
 	const groups = groupFilesByFolder(files);
 
@@ -173,12 +193,15 @@ export function FileListGrouped({
 					showStats={showStats}
 					onStage={onStage}
 					onUnstage={onUnstage}
+					onStageFiles={onStageFiles}
+					onUnstageFiles={onUnstageFiles}
 					isActioning={isActioning}
 					worktreePath={worktreePath}
 					onDiscard={onDiscard}
 					category={category}
 					commitHash={commitHash}
 					isExpandedView={isExpandedView}
+					projectId={projectId}
 				/>
 			))}
 		</div>

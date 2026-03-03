@@ -1,3 +1,4 @@
+import { toast } from "@superset/ui/sonner";
 import { useCallback } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 
@@ -6,19 +7,34 @@ interface UsePathActionsProps {
 	relativePath?: string;
 	/** For files: pass cwd to use openFileInEditor. For folders: omit to use openInApp */
 	cwd?: string;
+	/** Project ID for per-project default app resolution */
+	projectId?: string;
 }
 
 export function usePathActions({
 	absolutePath,
 	relativePath,
 	cwd,
+	projectId,
 }: UsePathActionsProps) {
 	const openInFinderMutation = electronTrpc.external.openInFinder.useMutation();
-	const openInAppMutation = electronTrpc.external.openInApp.useMutation();
+	const openInAppMutation = electronTrpc.external.openInApp.useMutation({
+		onError: (error) =>
+			toast.error("Failed to open in app", {
+				description: error.message,
+			}),
+	});
 	const openFileInEditorMutation =
-		electronTrpc.external.openFileInEditor.useMutation();
-	const { data: lastUsedApp = "cursor" } =
-		electronTrpc.settings.getLastUsedApp.useQuery();
+		electronTrpc.external.openFileInEditor.useMutation({
+			onError: (error) =>
+				toast.error("Failed to open in editor", {
+					description: error.message,
+				}),
+		});
+	const { data: defaultApp } = electronTrpc.projects.getDefaultApp.useQuery(
+		{ projectId: projectId as string },
+		{ enabled: !!projectId },
+	);
 
 	const copyPath = useCallback(async () => {
 		if (absolutePath) {
@@ -42,14 +58,23 @@ export function usePathActions({
 		if (!absolutePath) return;
 
 		if (cwd) {
-			openFileInEditorMutation.mutate({ path: absolutePath, cwd });
+			openFileInEditorMutation.mutate({ path: absolutePath, cwd, projectId });
+		} else if (defaultApp) {
+			openInAppMutation.mutate({
+				path: absolutePath,
+				app: defaultApp,
+				projectId,
+			});
 		} else {
-			openInAppMutation.mutate({ path: absolutePath, app: lastUsedApp });
+			toast.error("No default editor configured", {
+				description: "Open a project in an editor first to set a default.",
+			});
 		}
 	}, [
 		absolutePath,
 		cwd,
-		lastUsedApp,
+		projectId,
+		defaultApp,
 		openInAppMutation,
 		openFileInEditorMutation,
 	]);

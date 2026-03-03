@@ -1,3 +1,4 @@
+import type { GitHubStatus } from "@superset/local-db";
 import { Button } from "@superset/ui/button";
 import {
 	Command,
@@ -20,7 +21,6 @@ import { HiArrowPath, HiCheck } from "react-icons/hi2";
 import { LuGitBranch } from "react-icons/lu";
 import { VscGitStash, VscGitStashApply } from "react-icons/vsc";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { useChangesStore } from "renderer/stores/changes";
 import type { ChangesViewMode } from "../../types";
 import { ViewModeToggle } from "../ViewModeToggle";
 import { PRButton } from "./components/PRButton";
@@ -30,7 +30,10 @@ interface ChangesHeaderProps {
 	viewMode: ChangesViewMode;
 	onViewModeChange: (mode: ChangesViewMode) => void;
 	worktreePath: string;
-	workspaceId?: string;
+	pr: GitHubStatus["pr"] | null;
+	isPRStatusLoading: boolean;
+	canCreatePR: boolean;
+	createPRBlockedReason: string | null;
 	onStash: () => void;
 	onStashIncludeUntracked: () => void;
 	onStashPop: () => void;
@@ -38,24 +41,32 @@ interface ChangesHeaderProps {
 }
 
 function BaseBranchSelector({ worktreePath }: { worktreePath: string }) {
-	const { getBaseBranch, setBaseBranch } = useChangesStore();
-	const baseBranch = getBaseBranch(worktreePath);
 	const [open, setOpen] = useState(false);
 	const [search, setSearch] = useState("");
+	const utils = electronTrpc.useUtils();
 	const { data: branchData, isLoading } =
 		electronTrpc.changes.getBranches.useQuery(
 			{ worktreePath },
 			{ enabled: !!worktreePath },
 		);
 
-	const effectiveBaseBranch = baseBranch ?? branchData?.defaultBranch ?? "main";
+	const updateBaseBranch = electronTrpc.changes.updateBaseBranch.useMutation({
+		onSuccess: () => {
+			utils.changes.getBranches.invalidate({ worktreePath });
+		},
+	});
+
+	const effectiveBaseBranch =
+		branchData?.worktreeBaseBranch ?? branchData?.defaultBranch ?? "main";
 	const sortedBranches = useMemo(() => {
 		return [...(branchData?.remote ?? [])].sort((a, b) => {
+			if (a === effectiveBaseBranch) return -1;
+			if (b === effectiveBaseBranch) return 1;
 			if (a === branchData?.defaultBranch) return -1;
 			if (b === branchData?.defaultBranch) return 1;
 			return a.localeCompare(b);
 		});
-	}, [branchData?.remote, branchData?.defaultBranch]);
+	}, [branchData?.remote, branchData?.defaultBranch, effectiveBaseBranch]);
 
 	const filteredBranches = useMemo(() => {
 		if (!search) return sortedBranches.filter(Boolean);
@@ -66,11 +77,10 @@ function BaseBranchSelector({ worktreePath }: { worktreePath: string }) {
 	}, [sortedBranches, search]);
 
 	const handleBranchSelect = (branch: string) => {
-		if (branch === branchData?.defaultBranch) {
-			setBaseBranch(worktreePath, null);
-		} else {
-			setBaseBranch(worktreePath, branch);
-		}
+		updateBaseBranch.mutate({
+			worktreePath,
+			baseBranch: branch === branchData?.defaultBranch ? null : branch,
+		});
 		setOpen(false);
 		setSearch("");
 	};
@@ -90,7 +100,7 @@ function BaseBranchSelector({ worktreePath }: { worktreePath: string }) {
 						</Button>
 					</PopoverTrigger>
 				</TooltipTrigger>
-				<TooltipContent side="bottom" showArrow={false}>
+				<TooltipContent side="top" showArrow={false}>
 					Change base branch
 				</TooltipContent>
 			</Tooltip>
@@ -156,7 +166,7 @@ function StashDropdown({
 						</Button>
 					</DropdownMenuTrigger>
 				</TooltipTrigger>
-				<TooltipContent side="bottom" showArrow={false}>
+				<TooltipContent side="top" showArrow={false}>
 					Stash operations
 				</TooltipContent>
 			</Tooltip>
@@ -211,7 +221,7 @@ function RefreshButton({ onRefresh }: { onRefresh: () => void }) {
 					/>
 				</Button>
 			</TooltipTrigger>
-			<TooltipContent side="bottom" showArrow={false}>
+			<TooltipContent side="top" showArrow={false}>
 				Refresh changes
 			</TooltipContent>
 		</Tooltip>
@@ -223,7 +233,10 @@ export function ChangesHeader({
 	viewMode,
 	onViewModeChange,
 	worktreePath,
-	workspaceId,
+	pr,
+	isPRStatusLoading,
+	canCreatePR,
+	createPRBlockedReason,
 	onStash,
 	onStashIncludeUntracked,
 	onStashPop,
@@ -241,7 +254,10 @@ export function ChangesHeader({
 			<ViewModeToggle viewMode={viewMode} onViewModeChange={onViewModeChange} />
 			<RefreshButton onRefresh={onRefresh} />
 			<PRButton
-				workspaceId={workspaceId}
+				pr={pr}
+				isLoading={isPRStatusLoading}
+				canCreatePR={canCreatePR}
+				createPRBlockedReason={createPRBlockedReason}
 				worktreePath={worktreePath}
 				onRefresh={onRefresh}
 			/>

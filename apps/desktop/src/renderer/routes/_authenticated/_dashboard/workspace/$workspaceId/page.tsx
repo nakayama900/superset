@@ -1,6 +1,6 @@
-import { toast } from "@superset/ui/sonner";
 import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo } from "react";
+import { useFileOpenMode } from "renderer/hooks/useFileOpenMode";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
 import { usePresets } from "renderer/react-query/presets";
@@ -8,9 +8,17 @@ import type { WorkspaceSearchParams } from "renderer/routes/_authenticated/_dash
 import { navigateToWorkspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
 import { usePresetHotkeys } from "renderer/routes/_authenticated/_dashboard/workspace/$workspaceId/hooks/usePresetHotkeys";
 import { NotFound } from "renderer/routes/not-found";
+import {
+	CommandPalette,
+	useCommandPalette,
+} from "renderer/screens/main/components/CommandPalette";
+import {
+	KeywordSearch,
+	useKeywordSearch,
+} from "renderer/screens/main/components/KeywordSearch";
 import { WorkspaceInitializingView } from "renderer/screens/main/components/WorkspaceView/WorkspaceInitializingView";
 import { WorkspaceLayout } from "renderer/screens/main/components/WorkspaceView/WorkspaceLayout";
-import { usePRStatus } from "renderer/screens/main/hooks";
+import { useCreateOrOpenPR, usePRStatus } from "renderer/screens/main/hooks";
 import { useAppHotkey } from "renderer/stores/hotkeys";
 import { SidebarMode, useSidebarStore } from "renderer/stores/sidebar-state";
 import { getPaneDimensions } from "renderer/stores/tabs/pane-refs";
@@ -70,6 +78,9 @@ function WorkspacePage() {
 	const routeNavigate = Route.useNavigate();
 	const { tabId: searchTabId, paneId: searchPaneId } = Route.useSearch();
 
+	// Keep the file open mode cache warm for addFileViewerPane
+	useFileOpenMode();
+
 	// Handle search-param-driven tab/pane activation (e.g. from notification clicks)
 	useEffect(() => {
 		if (!searchTabId) return;
@@ -116,8 +127,11 @@ function WorkspacePage() {
 		splitPaneHorizontal,
 		openPreset,
 	} = useTabsWithPresets();
-	const addChatTab = useTabsStore((s) => s.addChatTab);
+	const addChatMastraTab = useTabsStore((s) => s.addChatMastraTab);
+	const reopenClosedTab = useTabsStore((s) => s.reopenClosedTab);
+	const addBrowserTab = useTabsStore((s) => s.addBrowserTab);
 	const setActiveTab = useTabsStore((s) => s.setActiveTab);
+	const removeTab = useTabsStore((s) => s.removeTab);
 	const removePane = useTabsStore((s) => s.removePane);
 	const setFocusedPane = useTabsStore((s) => s.setFocusedPane);
 	const toggleSidebar = useSidebarStore((s) => s.toggleSidebar);
@@ -153,7 +167,7 @@ function WorkspacePage() {
 		(presetIndex: number) => {
 			const preset = presets[presetIndex];
 			if (preset) {
-				openPreset(workspaceId, preset);
+				openPreset(workspaceId, preset, { target: "active-tab" });
 			} else {
 				addTab(workspaceId);
 			}
@@ -165,9 +179,23 @@ function WorkspacePage() {
 		workspaceId,
 		addTab,
 	]);
-	useAppHotkey("NEW_CHAT", () => addChatTab(workspaceId), undefined, [
+	useAppHotkey("NEW_CHAT", () => addChatMastraTab(workspaceId), undefined, [
 		workspaceId,
-		addChatTab,
+		addChatMastraTab,
+	]);
+	useAppHotkey(
+		"REOPEN_TAB",
+		() => {
+			if (!reopenClosedTab(workspaceId)) {
+				addChatMastraTab(workspaceId);
+			}
+		},
+		undefined,
+		[workspaceId, reopenClosedTab, addChatMastraTab],
+	);
+	useAppHotkey("NEW_BROWSER", () => addBrowserTab(workspaceId), undefined, [
+		workspaceId,
+		addBrowserTab,
 	]);
 	usePresetHotkeys(openTabWithPreset);
 
@@ -180,6 +208,16 @@ function WorkspacePage() {
 		},
 		undefined,
 		[focusedPaneId, removePane],
+	);
+	useAppHotkey(
+		"CLOSE_TAB",
+		() => {
+			if (activeTabId) {
+				removeTab(activeTabId);
+			}
+		},
+		undefined,
+		[activeTabId, removeTab],
 	);
 
 	useAppHotkey(
@@ -279,21 +317,32 @@ function WorkspacePage() {
 	);
 
 	// Open in last used app shortcut
-	const { data: lastUsedApp = "cursor" } =
-		electronTrpc.settings.getLastUsedApp.useQuery();
-	const openInApp = electronTrpc.external.openInApp.useMutation();
+	const projectId = workspace?.projectId;
+	const { data: defaultApp } = electronTrpc.projects.getDefaultApp.useQuery(
+		{ projectId: projectId as string },
+		{ enabled: !!projectId },
+	);
+	const utils = electronTrpc.useUtils();
+	const openInApp = electronTrpc.external.openInApp.useMutation({
+		onSuccess: () => {
+			if (projectId) {
+				utils.projects.getDefaultApp.invalidate({ projectId });
+			}
+		},
+	});
 	useAppHotkey(
 		"OPEN_IN_APP",
 		() => {
-			if (workspace?.worktreePath) {
+			if (workspace?.worktreePath && defaultApp) {
 				openInApp.mutate({
 					path: workspace.worktreePath,
-					app: lastUsedApp,
+					app: defaultApp,
+					projectId,
 				});
 			}
 		},
 		undefined,
-		[workspace?.worktreePath, lastUsedApp],
+		[workspace?.worktreePath, defaultApp, projectId],
 	);
 
 	// Copy path shortcut
@@ -311,21 +360,47 @@ function WorkspacePage() {
 
 	// Open PR shortcut (⌘⇧P)
 	const { pr } = usePRStatus({ workspaceId });
-	const createPRMutation = electronTrpc.changes.createPR.useMutation({
-		onSuccess: () => toast.success("Opening GitHub..."),
-		onError: (error) => toast.error(`Failed: ${error.message}`),
+	const { createOrOpenPR } = useCreateOrOpenPR({
+		worktreePath: workspace?.worktreePath,
 	});
 	useAppHotkey(
 		"OPEN_PR",
 		() => {
 			if (pr?.url) {
 				window.open(pr.url, "_blank");
-			} else if (workspace?.worktreePath) {
-				createPRMutation.mutate({ worktreePath: workspace.worktreePath });
+			} else {
+				createOrOpenPR();
 			}
 		},
 		undefined,
-		[pr?.url, workspace?.worktreePath],
+		[pr?.url, createOrOpenPR],
+	);
+
+	const commandPalette = useCommandPalette({
+		workspaceId,
+		worktreePath: workspace?.worktreePath,
+	});
+	const keywordSearch = useKeywordSearch({
+		workspaceId,
+		worktreePath: workspace?.worktreePath,
+	});
+	useAppHotkey(
+		"QUICK_OPEN",
+		() => {
+			keywordSearch.handleOpenChange(false);
+			commandPalette.toggle();
+		},
+		undefined,
+		[commandPalette.toggle, keywordSearch.handleOpenChange],
+	);
+	useAppHotkey(
+		"KEYWORD_SEARCH",
+		() => {
+			commandPalette.handleOpenChange(false);
+			keywordSearch.toggle();
+		},
+		undefined,
+		[commandPalette.handleOpenChange, keywordSearch.toggle],
 	);
 
 	// Toggle changes sidebar (⌘L)
@@ -478,6 +553,36 @@ function WorkspacePage() {
 					<WorkspaceLayout />
 				)}
 			</div>
+			<CommandPalette
+				open={commandPalette.open}
+				onOpenChange={commandPalette.handleOpenChange}
+				query={commandPalette.query}
+				onQueryChange={commandPalette.setQuery}
+				filtersOpen={commandPalette.filtersOpen}
+				onFiltersOpenChange={commandPalette.setFiltersOpen}
+				includePattern={commandPalette.includePattern}
+				onIncludePatternChange={commandPalette.setIncludePattern}
+				excludePattern={commandPalette.excludePattern}
+				onExcludePatternChange={commandPalette.setExcludePattern}
+				isLoading={commandPalette.isFetching}
+				searchResults={commandPalette.searchResults}
+				onSelectFile={commandPalette.selectFile}
+			/>
+			<KeywordSearch
+				open={keywordSearch.open}
+				onOpenChange={keywordSearch.handleOpenChange}
+				query={keywordSearch.query}
+				onQueryChange={keywordSearch.setQuery}
+				filtersOpen={keywordSearch.filtersOpen}
+				onFiltersOpenChange={keywordSearch.setFiltersOpen}
+				includePattern={keywordSearch.includePattern}
+				onIncludePatternChange={keywordSearch.setIncludePattern}
+				excludePattern={keywordSearch.excludePattern}
+				onExcludePatternChange={keywordSearch.setExcludePattern}
+				isLoading={keywordSearch.isFetching}
+				searchResults={keywordSearch.searchResults}
+				onSelectMatch={keywordSearch.selectMatch}
+			/>
 		</div>
 	);
 }

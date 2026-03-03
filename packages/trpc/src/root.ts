@@ -4,12 +4,14 @@ import { adminRouter } from "./router/admin";
 import { agentRouter } from "./router/agent";
 import { analyticsRouter } from "./router/analytics";
 import { apiKeyRouter } from "./router/api-key";
+import { chatRouter } from "./router/chat";
 import { deviceRouter } from "./router/device";
 import { integrationRouter } from "./router/integration";
 import { organizationRouter } from "./router/organization";
-import { repositoryRouter } from "./router/repository";
+import { projectRouter } from "./router/project";
 import { taskRouter } from "./router/task";
 import { userRouter } from "./router/user";
+import { workspaceRouter } from "./router/workspace";
 import { createCallerFactory, createTRPCRouter } from "./trpc";
 
 export const appRouter = createTRPCRouter({
@@ -17,12 +19,14 @@ export const appRouter = createTRPCRouter({
 	agent: agentRouter,
 	apiKey: apiKeyRouter,
 	analytics: analyticsRouter,
+	chat: chatRouter,
 	device: deviceRouter,
 	integration: integrationRouter,
 	organization: organizationRouter,
-	repository: repositoryRouter,
+	project: projectRouter,
 	task: taskRouter,
 	user: userRouter,
+	workspace: workspaceRouter,
 });
 
 export type AppRouter = typeof appRouter;

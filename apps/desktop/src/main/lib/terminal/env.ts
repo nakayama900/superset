@@ -1,8 +1,31 @@
-import { execSync } from "node:child_process";
+import { exec } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import defaultShell from "default-shell";
 import { env } from "shared/env.shared";
 import { getShellEnv } from "../agent-setup/shell-wrappers";
+
+const MACOS_SYSTEM_CERT_FILE = "/etc/ssl/cert.pem";
+let cachedUtf8Locale: string | null = null;
+let localeProbeInFlight = false;
+
+function startLocaleProbe(): void {
+	if (cachedUtf8Locale || localeProbeInFlight) return;
+	localeProbeInFlight = true;
+
+	exec(
+		"locale 2>/dev/null | grep LANG= | cut -d= -f2",
+		{ encoding: "utf-8", timeout: 1000 },
+		(error, stdout) => {
+			localeProbeInFlight = false;
+			if (error) return;
+			const result = stdout.trim();
+			if (result.includes("UTF-8")) {
+				cachedUtf8Locale = result;
+			}
+		},
+	);
+}
 
 /**
  * Current hook protocol version.
@@ -41,19 +64,31 @@ export function getLocale(baseEnv: Record<string, string>): string {
 		return baseEnv.LC_ALL;
 	}
 
-	try {
-		const result = execSync("locale 2>/dev/null | grep LANG= | cut -d= -f2", {
-			encoding: "utf-8",
-			timeout: 1000,
-		}).trim();
-		if (result?.includes("UTF-8")) {
-			return result;
-		}
-	} catch {
-		// Ignore - will use fallback
+	if (cachedUtf8Locale) {
+		return cachedUtf8Locale;
 	}
 
-	return "en_US.UTF-8";
+	startLocaleProbe();
+	cachedUtf8Locale = "en_US.UTF-8";
+	return cachedUtf8Locale;
+}
+
+/**
+ * Precompute expensive locale fallback resolution early in app startup so
+ * the first terminal create/attach path does not pay a synchronous probe.
+ */
+export function prewarmTerminalEnv(): void {
+	const rawBaseEnv = sanitizeEnv(process.env) || {};
+	const directLocale = rawBaseEnv.LANG?.includes("UTF-8")
+		? rawBaseEnv.LANG
+		: rawBaseEnv.LC_ALL?.includes("UTF-8")
+			? rawBaseEnv.LC_ALL
+			: null;
+	if (directLocale) {
+		cachedUtf8Locale = directLocale;
+		return;
+	}
+	startLocaleProbe();
 }
 
 export function sanitizeEnv(
@@ -330,7 +365,7 @@ export function buildTerminalEnv(params: {
 	workspaceName?: string;
 	workspacePath?: string;
 	rootPath?: string;
-	portBase?: number | null;
+	themeType?: "dark" | "light";
 }): Record<string, string> {
 	const {
 		shell,
@@ -340,7 +375,7 @@ export function buildTerminalEnv(params: {
 		workspaceName,
 		workspacePath,
 		rootPath,
-		portBase,
+		themeType,
 	} = params;
 
 	// Get Electron's process.env and filter to only allowlisted safe vars
@@ -353,12 +388,16 @@ export function buildTerminalEnv(params: {
 	const shellEnv = getShellEnv(shell);
 	const locale = getLocale(rawBaseEnv);
 
+	// COLORFGBG: "foreground;background" ANSI color indices — TUI apps use this to detect light/dark
+	const colorFgBg = themeType === "light" ? "0;15" : "15;0";
+
 	const terminalEnv: Record<string, string> = {
 		...baseEnv,
 		...shellEnv,
 		TERM_PROGRAM: "Superset",
 		TERM_PROGRAM_VERSION: process.env.npm_package_version || "1.0.0",
 		COLORTERM: "truecolor",
+		COLORFGBG: colorFgBg,
 		LANG: locale,
 		SUPERSET_PANE_ID: paneId,
 		SUPERSET_TAB_ID: tabId,
@@ -371,11 +410,19 @@ export function buildTerminalEnv(params: {
 		SUPERSET_ENV: env.NODE_ENV === "development" ? "development" : "production",
 		// Hook protocol version for forward compatibility
 		SUPERSET_HOOK_VERSION: HOOK_PROTOCOL_VERSION,
-		// Port base for multi-worktree dev instances (setup.sh uses this to calculate all ports)
-		...(portBase != null && { SUPERSET_PORT_BASE: String(portBase) }),
 	};
 
 	delete terminalEnv.GOOGLE_API_KEY;
+
+	// Electron child processes can't access macOS Keychain for TLS cert verification,
+	// causing "x509: OSStatus -26276" in Go binaries like `gh`. File-based fallback.
+	if (
+		os.platform() === "darwin" &&
+		!terminalEnv.SSL_CERT_FILE &&
+		fs.existsSync(MACOS_SYSTEM_CERT_FILE)
+	) {
+		terminalEnv.SSL_CERT_FILE = MACOS_SYSTEM_CERT_FILE;
+	}
 
 	return terminalEnv;
 }

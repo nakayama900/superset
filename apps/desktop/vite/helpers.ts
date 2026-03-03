@@ -33,6 +33,10 @@ const RESOURCES_TO_COPY = [
 		dest: resolve(__dirname, "..", devPath, "resources/tray"),
 	},
 	{
+		src: resolve(__dirname, "..", resources, "browser-extension"),
+		dest: resolve(__dirname, "..", devPath, "resources/browser-extension"),
+	},
+	{
 		src: resolve(__dirname, "../../../packages/local-db/drizzle"),
 		dest: resolve(__dirname, "..", devPath, "resources/migrations"),
 	},
@@ -69,6 +73,13 @@ export function htmlEnvTransformPlugin(): Plugin {
 				.replace(
 					/%NEXT_PUBLIC_API_URL%/g,
 					process.env.NEXT_PUBLIC_API_URL || "https://api.superset.sh",
+				)
+				.replace(
+					/%NEXT_PUBLIC_ELECTRIC_URL%/g,
+					new URL(
+						process.env.NEXT_PUBLIC_ELECTRIC_URL ||
+							"https://api.superset.sh/api/electric",
+					).origin,
 				)
 				.replace(
 					/%NEXT_PUBLIC_STREAMS_URL%/g,

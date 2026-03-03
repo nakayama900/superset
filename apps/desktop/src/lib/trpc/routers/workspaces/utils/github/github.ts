@@ -41,7 +41,7 @@ export async function fetchGitHubPRStatus(
 
 		const [branchCheck, prInfo] = await Promise.all([
 			branchExistsOnRemote(worktreePath, branchName),
-			getPRForBranch(worktreePath),
+			getPRForBranch(worktreePath, branchName),
 		]);
 
 		const result: GitHubStatus = {
@@ -84,25 +84,24 @@ const PR_JSON_FIELDS =
 
 async function getPRForBranch(
 	worktreePath: string,
+	branchName: string,
 ): Promise<GitHubStatus["pr"]> {
-	// Try branch-based lookup first, then fall back to commit-based search.
-	// Branch-based is fast but fails when the branch was renamed after PR creation.
-	const branchResult = await getPRByBranchTracking(worktreePath);
-	if (branchResult !== undefined) {
-		return branchResult;
+	const byTracking = await getPRByBranchTracking(worktreePath);
+	if (byTracking) {
+		return byTracking;
 	}
 
-	return findPRByHeadCommit(worktreePath);
+	// Fallback for branches where local naming/casing diverges from PR head.
+	return findPRByHeadBranch(worktreePath, branchName);
 }
 
 /**
  * Looks up a PR using `gh pr view` (no args), which matches via the branch's
  * tracking ref. Essential for fork PRs that track refs/pull/XXX/head.
- * Returns the PR, null (no match), or undefined (branch name mismatch — caller should try commit-based).
  */
 async function getPRByBranchTracking(
 	worktreePath: string,
-): Promise<GitHubStatus["pr"] | undefined> {
+): Promise<GitHubStatus["pr"]> {
 	try {
 		const { stdout } = await execWithShellEnv(
 			"gh",
@@ -115,8 +114,6 @@ async function getPRByBranchTracking(
 			return null;
 		}
 
-		// `gh pr view` matches by branch name, which can find a stale PR if the
-		// branch was recreated. Verify shared commit ancestry to confirm the match.
 		if (!(await sharesAncestry(worktreePath, data.headRefOid))) {
 			return null;
 		}
@@ -125,68 +122,41 @@ async function getPRByBranchTracking(
 	} catch (error) {
 		if (
 			error instanceof Error &&
-			error.message.includes("no pull requests found")
+			error.message.toLowerCase().includes("no pull requests found")
 		) {
-			// Branch name didn't match any PR — signal caller to try commit-based
-			return undefined;
+			return null;
 		}
 		throw error;
 	}
 }
 
-/**
- * Finds a PR by searching GitHub for the local HEAD commit SHA.
- * Handles cases where the branch was renamed after PR creation.
- */
-async function findPRByHeadCommit(
+async function findPRByHeadBranch(
 	worktreePath: string,
+	branchName: string,
 ): Promise<GitHubStatus["pr"]> {
 	try {
-		const { stdout: headOutput } = await execFileAsync(
-			"git",
-			["-C", worktreePath, "rev-parse", "HEAD"],
-			{ timeout: 10_000 },
-		);
-		const headSha = headOutput.trim();
-
-		const { stdout: searchOutput } = await execWithShellEnv(
+		const { stdout } = await execWithShellEnv(
 			"gh",
 			[
-				"api",
-				`search/issues?q=${headSha}+type:pr+repo:{owner}/{repo}`,
-				"--jq",
-				".items[].number",
+				"pr",
+				"list",
+				"--state",
+				"all",
+				"--search",
+				`head:${branchName}`,
+				"--limit",
+				"20",
+				"--json",
+				PR_JSON_FIELDS,
 			],
 			{ cwd: worktreePath },
 		);
 
-		const prNumbers = searchOutput
-			.trim()
-			.split("\n")
-			.filter(Boolean)
-			.map(Number);
-		if (prNumbers.length === 0) {
-			return null;
-		}
-
-		// Check each candidate PR — prefer one whose headRefOid matches exactly
-		for (const prNumber of prNumbers) {
-			try {
-				const { stdout } = await execWithShellEnv(
-					"gh",
-					["pr", "view", String(prNumber), "--json", PR_JSON_FIELDS],
-					{ cwd: worktreePath },
-				);
-
-				const data = parsePRResponse(stdout);
-				if (!data) {
-					continue;
-				}
-
-				if (await sharesAncestry(worktreePath, data.headRefOid)) {
-					return formatPRData(data);
-				}
-			} catch {}
+		const candidates = parsePRListResponse(stdout);
+		for (const candidate of candidates) {
+			if (await sharesAncestry(worktreePath, candidate.headRefOid)) {
+				return formatPRData(candidate);
+			}
 		}
 
 		return null;
@@ -196,7 +166,21 @@ async function findPRByHeadCommit(
 }
 
 function parsePRResponse(stdout: string): GHPRResponse | null {
-	const raw = JSON.parse(stdout);
+	const trimmed = stdout.trim();
+	if (!trimmed || trimmed === "null") {
+		return null;
+	}
+
+	let raw: unknown;
+	try {
+		raw = JSON.parse(trimmed);
+	} catch (error) {
+		console.warn(
+			"[GitHub] Failed to parse PR response JSON:",
+			error instanceof Error ? error.message : String(error),
+		);
+		return null;
+	}
 	const result = GHPRResponseSchema.safeParse(raw);
 	if (!result.success) {
 		console.error("[GitHub] PR schema validation failed:", result.error);
@@ -206,25 +190,40 @@ function parsePRResponse(stdout: string): GHPRResponse | null {
 	return result.data;
 }
 
-function formatPRData(data: GHPRResponse): NonNullable<GitHubStatus["pr"]> {
-	return {
-		number: data.number,
-		title: data.title,
-		url: data.url,
-		state: mapPRState(data.state, data.isDraft),
-		mergedAt: data.mergedAt ? new Date(data.mergedAt).getTime() : undefined,
-		additions: data.additions,
-		deletions: data.deletions,
-		reviewDecision: mapReviewDecision(data.reviewDecision),
-		checksStatus: computeChecksStatus(data.statusCheckRollup),
-		checks: parseChecks(data.statusCheckRollup),
-	};
+function parsePRListResponse(stdout: string): GHPRResponse[] {
+	const trimmed = stdout.trim();
+	if (!trimmed || trimmed === "null") {
+		return [];
+	}
+
+	let raw: unknown;
+	try {
+		raw = JSON.parse(trimmed);
+	} catch (error) {
+		console.warn(
+			"[GitHub] Failed to parse PR list response JSON:",
+			error instanceof Error ? error.message : String(error),
+		);
+		return [];
+	}
+
+	if (!Array.isArray(raw)) {
+		return [];
+	}
+
+	const parsed: GHPRResponse[] = [];
+	for (const item of raw) {
+		const result = GHPRResponseSchema.safeParse(item);
+		if (result.success) {
+			parsed.push(result.data);
+		}
+	}
+	return parsed;
 }
 
 /**
  * Returns true if local HEAD and the given commit share ancestry
  * (one is an ancestor of the other, or they are the same commit).
- * Falls back to true when ancestry can't be verified (e.g., commit not fetched).
  */
 async function sharesAncestry(
 	worktreePath: string,
@@ -242,7 +241,6 @@ async function sharesAncestry(
 			return true;
 		}
 
-		// Check both directions: local ahead of PR, and PR ahead of local
 		for (const [ancestor, descendant] of [
 			[prHeadOid, localOid],
 			[localOid, prHeadOid],
@@ -262,18 +260,29 @@ async function sharesAncestry(
 				);
 				return true;
 			} catch {
-				// Not an ancestor in this direction
+				// Try the other direction.
 			}
 		}
 
 		return false;
-	} catch (error) {
-		console.warn(
-			"[GitHub] Could not verify PR commit ancestry:",
-			error instanceof Error ? error.message : String(error),
-		);
-		return true;
+	} catch {
+		return false;
 	}
+}
+
+function formatPRData(data: GHPRResponse): NonNullable<GitHubStatus["pr"]> {
+	return {
+		number: data.number,
+		title: data.title,
+		url: data.url,
+		state: mapPRState(data.state, data.isDraft),
+		mergedAt: data.mergedAt ? new Date(data.mergedAt).getTime() : undefined,
+		additions: data.additions,
+		deletions: data.deletions,
+		reviewDecision: mapReviewDecision(data.reviewDecision),
+		checksStatus: computeChecksStatus(data.statusCheckRollup),
+		checks: parseChecks(data.statusCheckRollup),
+	};
 }
 
 function mapPRState(

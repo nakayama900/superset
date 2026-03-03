@@ -35,11 +35,15 @@ export const projects = sqliteTable(
 			mode: "boolean",
 		}),
 		defaultBranch: text("default_branch"),
+		workspaceBaseBranch: text("workspace_base_branch"),
 		githubOwner: text("github_owner"),
 		branchPrefixMode: text("branch_prefix_mode").$type<BranchPrefixMode>(),
 		branchPrefixCustom: text("branch_prefix_custom"),
+		worktreeBaseDir: text("worktree_base_dir"),
 		hideImage: integer("hide_image", { mode: "boolean" }),
 		iconUrl: text("icon_url"),
+		neonProjectId: text("neon_project_id"),
+		defaultApp: text("default_app").$type<ExternalApp>(),
 	},
 	(table) => [
 		index("projects_main_repo_path_idx").on(table.mainRepoPath),
@@ -137,7 +141,6 @@ export type SelectWorkspace = typeof workspaces.$inferSelect;
 export const settings = sqliteTable("settings", {
 	id: integer("id").primaryKey().default(1),
 	lastActiveWorkspaceId: text("last_active_workspace_id"),
-	lastUsedApp: text("last_used_app").$type<ExternalApp>(),
 	terminalPresets: text("terminal_presets", { mode: "json" }).$type<
 		TerminalPreset[]
 	>(),
@@ -164,10 +167,17 @@ export const settings = sqliteTable("settings", {
 	deleteLocalBranch: integer("delete_local_branch", { mode: "boolean" }),
 	fileOpenMode: text("file_open_mode").$type<FileOpenMode>(),
 	showPresetsBar: integer("show_presets_bar", { mode: "boolean" }),
+	useCompactTerminalAddButton: integer("use_compact_terminal_add_button", {
+		mode: "boolean",
+	}),
 	terminalFontFamily: text("terminal_font_family"),
 	terminalFontSize: integer("terminal_font_size"),
 	editorFontFamily: text("editor_font_family"),
 	editorFontSize: integer("editor_font_size"),
+	showResourceMonitor: integer("show_resource_monitor", { mode: "boolean" }),
+	worktreeBaseDir: text("worktree_base_dir"),
+	openLinksInApp: integer("open_links_in_app", { mode: "boolean" }),
+	defaultEditor: text("default_editor").$type<ExternalApp>(),
 });
 
 export type InsertSettings = typeof settings.$inferInsert;
@@ -307,3 +317,29 @@ export const tasks = sqliteTable(
 
 export type InsertTask = typeof tasks.$inferInsert;
 export type SelectTask = typeof tasks.$inferSelect;
+
+/**
+ * Browser history table - persists browsing history for URL autocomplete
+ */
+export const browserHistory = sqliteTable(
+	"browser_history",
+	{
+		id: text("id")
+			.primaryKey()
+			.$defaultFn(() => uuidv4()),
+		url: text("url").notNull().unique(),
+		title: text("title").notNull().default(""),
+		faviconUrl: text("favicon_url"),
+		lastVisitedAt: integer("last_visited_at")
+			.notNull()
+			.$defaultFn(() => Date.now()),
+		visitCount: integer("visit_count").notNull().default(1),
+	},
+	(table) => [
+		index("browser_history_url_idx").on(table.url),
+		index("browser_history_last_visited_at_idx").on(table.lastVisitedAt),
+	],
+);
+
+export type InsertBrowserHistory = typeof browserHistory.$inferInsert;
+export type SelectBrowserHistory = typeof browserHistory.$inferSelect;

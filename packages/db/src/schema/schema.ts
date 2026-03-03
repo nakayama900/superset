@@ -20,8 +20,11 @@ import {
 	integrationProviderValues,
 	taskPriorityValues,
 	taskStatusEnumValues,
+	workspaceTypeValues,
 } from "./enums";
+import { githubRepositories } from "./github";
 import type { IntegrationConfig } from "./types";
+import type { WorkspaceConfig } from "./zod";
 
 export const taskStatus = pgEnum("task_status", taskStatusEnumValues);
 export const taskPriority = pgEnum("task_priority", taskPriorityValues);
@@ -31,35 +34,6 @@ export const integrationProvider = pgEnum(
 );
 export const deviceType = pgEnum("device_type", deviceTypeValues);
 export const commandStatus = pgEnum("command_status", commandStatusValues);
-
-export const repositories = pgTable(
-	"repositories",
-	{
-		id: uuid().primaryKey().defaultRandom(),
-		organizationId: uuid("organization_id")
-			.notNull()
-			.references(() => organizations.id, { onDelete: "cascade" }),
-		name: text().notNull(),
-		slug: text().notNull(),
-		repoUrl: text("repo_url").notNull(),
-		repoOwner: text("repo_owner").notNull(),
-		repoName: text("repo_name").notNull(),
-		defaultBranch: text("default_branch").notNull().default("main"),
-		createdAt: timestamp("created_at").notNull().defaultNow(),
-		updatedAt: timestamp("updated_at")
-			.notNull()
-			.defaultNow()
-			.$onUpdate(() => new Date()),
-	},
-	(table) => [
-		index("repositories_organization_id_idx").on(table.organizationId),
-		index("repositories_slug_idx").on(table.slug),
-		unique("repositories_org_slug_unique").on(table.organizationId, table.slug),
-	],
-);
-
-export type InsertRepository = typeof repositories.$inferInsert;
-export type SelectRepository = typeof repositories.$inferSelect;
 
 export const taskStatuses = pgTable(
 	"task_statuses",
@@ -117,9 +91,6 @@ export const tasks = pgTable(
 		organizationId: uuid("organization_id")
 			.notNull()
 			.references(() => organizations.id, { onDelete: "cascade" }),
-		repositoryId: uuid("repository_id").references(() => repositories.id, {
-			onDelete: "cascade",
-		}),
 		assigneeId: uuid("assignee_id").references(() => users.id, {
 			onDelete: "set null",
 		}),
@@ -158,7 +129,6 @@ export const tasks = pgTable(
 	(table) => [
 		index("tasks_slug_idx").on(table.slug),
 		index("tasks_organization_id_idx").on(table.organizationId),
-		index("tasks_repository_id_idx").on(table.repositoryId),
 		index("tasks_assignee_id_idx").on(table.assigneeId),
 		index("tasks_creator_id_idx").on(table.creatorId),
 		index("tasks_status_id_idx").on(table.statusId),
@@ -271,8 +241,12 @@ export const devicePresence = pgTable(
 		deviceId: text("device_id").notNull(),
 		deviceName: text("device_name").notNull(),
 		deviceType: deviceType("device_type").notNull(),
-		lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
-		createdAt: timestamp("created_at").notNull().defaultNow(),
+		lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+			.notNull()
+			.defaultNow(),
+		createdAt: timestamp("created_at", { withTimezone: true })
+			.notNull()
+			.defaultNow(),
 	},
 	(table) => [
 		index("device_presence_user_org_idx").on(
@@ -307,13 +281,13 @@ export const agentCommands = pgTable(
 		params: jsonb().$type<Record<string, unknown>>(),
 		parentCommandId: uuid("parent_command_id"),
 		status: commandStatus().notNull().default("pending"),
-		claimedBy: text("claimed_by"),
-		claimedAt: timestamp("claimed_at"),
 		result: jsonb().$type<Record<string, unknown>>(),
 		error: text(),
-		createdAt: timestamp("created_at").notNull().defaultNow(),
-		executedAt: timestamp("executed_at"),
-		timeoutAt: timestamp("timeout_at"),
+		createdAt: timestamp("created_at", { withTimezone: true })
+			.notNull()
+			.defaultNow(),
+		executedAt: timestamp("executed_at", { withTimezone: true }),
+		timeoutAt: timestamp("timeout_at", { withTimezone: true }),
 	},
 	(table) => [
 		index("agent_commands_user_status_idx").on(table.userId, table.status),
@@ -355,3 +329,183 @@ export const usersSlackUsers = pgTable(
 
 export type InsertUsersSlackUsers = typeof usersSlackUsers.$inferInsert;
 export type SelectUsersSlackUsers = typeof usersSlackUsers.$inferSelect;
+
+export const workspaceType = pgEnum("workspace_type", workspaceTypeValues);
+
+export const projects = pgTable(
+	"projects",
+	{
+		id: uuid().primaryKey().defaultRandom(),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		name: text().notNull(),
+		slug: text().notNull(),
+		githubRepositoryId: uuid("github_repository_id").references(
+			() => githubRepositories.id,
+			{ onDelete: "set null" },
+		),
+		repoOwner: text("repo_owner").notNull(),
+		repoName: text("repo_name").notNull(),
+		repoUrl: text("repo_url").notNull(),
+		defaultBranch: text("default_branch").notNull().default("main"),
+		createdAt: timestamp("created_at").notNull().defaultNow(),
+		updatedAt: timestamp("updated_at")
+			.notNull()
+			.defaultNow()
+			.$onUpdate(() => new Date()),
+	},
+	(table) => [
+		index("projects_organization_id_idx").on(table.organizationId),
+		unique("projects_org_slug_unique").on(table.organizationId, table.slug),
+	],
+);
+
+export type InsertProject = typeof projects.$inferInsert;
+export type SelectProject = typeof projects.$inferSelect;
+
+export const secrets = pgTable(
+	"secrets",
+	{
+		id: uuid().primaryKey().defaultRandom(),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		projectId: uuid("project_id")
+			.notNull()
+			.references(() => projects.id, { onDelete: "cascade" }),
+		key: text().notNull(),
+		encryptedValue: text("encrypted_value").notNull(),
+		sensitive: boolean().notNull().default(false),
+		createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+			onDelete: "set null",
+		}),
+		createdAt: timestamp("created_at").notNull().defaultNow(),
+		updatedAt: timestamp("updated_at")
+			.notNull()
+			.defaultNow()
+			.$onUpdate(() => new Date()),
+	},
+	(table) => [
+		unique("secrets_project_key_unique").on(table.projectId, table.key),
+		index("secrets_project_id_idx").on(table.projectId),
+		index("secrets_organization_id_idx").on(table.organizationId),
+	],
+);
+
+export type InsertSecret = typeof secrets.$inferInsert;
+export type SelectSecret = typeof secrets.$inferSelect;
+
+export const sandboxImages = pgTable(
+	"sandbox_images",
+	{
+		id: uuid().primaryKey().defaultRandom(),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		projectId: uuid("project_id")
+			.notNull()
+			.references(() => projects.id, { onDelete: "cascade" }),
+		setupCommands: jsonb("setup_commands").$type<string[]>().default([]),
+		baseImage: text("base_image"),
+		systemPackages: jsonb("system_packages").$type<string[]>().default([]),
+		createdAt: timestamp("created_at").notNull().defaultNow(),
+		updatedAt: timestamp("updated_at")
+			.notNull()
+			.defaultNow()
+			.$onUpdate(() => new Date()),
+	},
+	(table) => [
+		unique("sandbox_images_project_unique").on(table.projectId),
+		index("sandbox_images_organization_id_idx").on(table.organizationId),
+	],
+);
+
+export type InsertSandboxImage = typeof sandboxImages.$inferInsert;
+export type SelectSandboxImage = typeof sandboxImages.$inferSelect;
+
+export const workspaces = pgTable(
+	"workspaces",
+	{
+		id: uuid().primaryKey().defaultRandom(),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		projectId: uuid("project_id")
+			.notNull()
+			.references(() => projects.id, { onDelete: "cascade" }),
+		name: text().notNull(),
+		type: workspaceType().notNull(),
+		config: jsonb().notNull().$type<WorkspaceConfig>(),
+		createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+			onDelete: "set null",
+		}),
+		createdAt: timestamp("created_at").notNull().defaultNow(),
+		updatedAt: timestamp("updated_at")
+			.notNull()
+			.defaultNow()
+			.$onUpdate(() => new Date()),
+	},
+	(table) => [
+		index("workspaces_project_id_idx").on(table.projectId),
+		index("workspaces_organization_id_idx").on(table.organizationId),
+		index("workspaces_type_idx").on(table.type),
+	],
+);
+
+export type InsertWorkspace = typeof workspaces.$inferInsert;
+export type SelectWorkspace = typeof workspaces.$inferSelect;
+
+export const chatSessions = pgTable(
+	"chat_sessions",
+	{
+		id: uuid().primaryKey().defaultRandom(),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		createdBy: uuid("created_by")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		workspaceId: uuid("workspace_id").references(() => workspaces.id, {
+			onDelete: "set null",
+		}),
+		title: text(),
+		lastActiveAt: timestamp("last_active_at").notNull().defaultNow(),
+		createdAt: timestamp("created_at").notNull().defaultNow(),
+		updatedAt: timestamp("updated_at")
+			.notNull()
+			.defaultNow()
+			.$onUpdate(() => new Date()),
+	},
+	(table) => [
+		index("chat_sessions_org_idx").on(table.organizationId),
+		index("chat_sessions_created_by_idx").on(table.createdBy),
+		index("chat_sessions_last_active_idx").on(table.lastActiveAt),
+	],
+);
+
+export type InsertChatSession = typeof chatSessions.$inferInsert;
+export type SelectChatSession = typeof chatSessions.$inferSelect;
+
+export const sessionHosts = pgTable(
+	"session_hosts",
+	{
+		id: uuid().primaryKey().defaultRandom(),
+		sessionId: uuid("session_id")
+			.notNull()
+			.references(() => chatSessions.id, { onDelete: "cascade" }),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		deviceId: text("device_id").notNull(),
+		createdAt: timestamp("created_at").notNull().defaultNow(),
+	},
+	(table) => [
+		index("session_hosts_session_id_idx").on(table.sessionId),
+		index("session_hosts_org_idx").on(table.organizationId),
+		index("session_hosts_device_id_idx").on(table.deviceId),
+	],
+);
+
+export type InsertSessionHost = typeof sessionHosts.$inferInsert;
+export type SelectSessionHost = typeof sessionHosts.$inferSelect;

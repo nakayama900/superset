@@ -11,6 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  VERCEL_CLI_VERSION: 50.22.1
   PR_NUMBER: ${{ github.event.pull_request.number }}
   API_ALIAS: api-pr-${{ github.event.pull_request.number }}-superset.vercel.app
   WEB_ALIAS: web-pr-${{ github.event.pull_request.number }}-superset.vercel.app
@@ -23,6 +24,7 @@ jobs:
   deploy-database:
     name: Deploy Database (Neon)
     runs-on: ubuntu-latest
+    environment: preview
 
     steps:
       - name: Checkout repository
@@ -120,50 +122,6 @@ jobs:
           name: electric-status
           path: electric-status.env
 
-  deploy-streams-preview:
-    name: Deploy Streams (Fly.io)
-    runs-on: ubuntu-latest
-    needs: deploy-database
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download database info
-        uses: actions/download-artifact@v4
-        with:
-          name: database-status
-
-      - name: Load database URL
-        run: |
-          source database-status.env
-          echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
-
-      - name: Deploy Streams to Fly.io
-        uses: superfly/fly-pr-review-apps@1.3.0
-        with:
-          name: superset-stream-pr-${{ github.event.pull_request.number }}
-          region: iad
-          org: ${{ vars.FLY_ORG }}
-          config: apps/streams/fly.toml
-          secrets: |
-            DATABASE_URL=${{ env.DATABASE_URL }}
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-      - name: Save streams status
-        run: |
-          cat > streams-status.env << EOF
-          STREAMS_STATUS="✅"
-          STREAMS_LINK="<a href=\"https://fly.io/apps/superset-stream-pr-${{ github.event.pull_request.number }}\">View App</a>"
-          EOF
-
-      - name: Upload streams status
-        uses: actions/upload-artifact@v4
-        with:
-          name: streams-status
-          path: streams-status.env
-
   deploy-api:
     name: Deploy API
     runs-on: ubuntu-latest
@@ -200,7 +158,7 @@ jobs:
         run: bun install --frozen
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@$VERCEL_CLI_VERSION
 
       - name: Build and Deploy API
         id: deploy
@@ -245,15 +203,19 @@ jobs:
           QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
           ELECTRIC_URL: ${{ env.ELECTRIC_URL }}
           ELECTRIC_SECRET: ${{ secrets.ELECTRIC_SECRET_PREVIEW }}
+          DURABLE_STREAMS_URL: ${{ secrets.DURABLE_STREAMS_URL }}
+          DURABLE_STREAMS_SECRET: ${{ secrets.DURABLE_STREAMS_SECRET }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           STRIPE_PRO_MONTHLY_PRICE_ID: ${{ secrets.STRIPE_PRO_MONTHLY_PRICE_ID }}
           STRIPE_PRO_YEARLY_PRICE_ID: ${{ secrets.STRIPE_PRO_YEARLY_PRICE_ID }}
           SLACK_BILLING_WEBHOOK_URL: ${{ secrets.SLACK_BILLING_WEBHOOK_URL }}
+          SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
         run: |
           vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
           vercel build --token=$VERCEL_TOKEN
-          VERCEL_URL=$(vercel deploy --prebuilt --token=$VERCEL_TOKEN \
+          VERCEL_URL=$(vercel deploy --prebuilt --archive=tgz --token=$VERCEL_TOKEN \
             --env DATABASE_URL=$DATABASE_URL \
             --env DATABASE_URL_UNPOOLED=$DATABASE_URL_UNPOOLED \
             --env BLOB_READ_WRITE_TOKEN=$BLOB_READ_WRITE_TOKEN \
@@ -290,11 +252,15 @@ jobs:
             --env QSTASH_NEXT_SIGNING_KEY=$QSTASH_NEXT_SIGNING_KEY \
             --env ELECTRIC_URL=$ELECTRIC_URL \
             --env ELECTRIC_SECRET=$ELECTRIC_SECRET \
+            --env DURABLE_STREAMS_URL=$DURABLE_STREAMS_URL \
+            --env DURABLE_STREAMS_SECRET=$DURABLE_STREAMS_SECRET \
             --env STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY \
             --env STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET \
             --env STRIPE_PRO_MONTHLY_PRICE_ID=$STRIPE_PRO_MONTHLY_PRICE_ID \
             --env STRIPE_PRO_YEARLY_PRICE_ID=$STRIPE_PRO_YEARLY_PRICE_ID \
-            --env SLACK_BILLING_WEBHOOK_URL=$SLACK_BILLING_WEBHOOK_URL)
+            --env SLACK_BILLING_WEBHOOK_URL=$SLACK_BILLING_WEBHOOK_URL \
+            --env SECRETS_ENCRYPTION_KEY=$SECRETS_ENCRYPTION_KEY \
+            --env TAVILY_API_KEY=$TAVILY_API_KEY)
           vercel alias $VERCEL_URL ${{ env.API_ALIAS }} --scope=$VERCEL_ORG_ID --token=$VERCEL_TOKEN
           echo "vercel_url=$VERCEL_URL" >> $GITHUB_OUTPUT
 
@@ -348,7 +314,7 @@ jobs:
         run: bun install --frozen
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@$VERCEL_CLI_VERSION
 
       - name: Build and Deploy Web
         id: deploy
@@ -380,10 +346,12 @@ jobs:
           STRIPE_PRO_MONTHLY_PRICE_ID: ${{ secrets.STRIPE_PRO_MONTHLY_PRICE_ID }}
           STRIPE_PRO_YEARLY_PRICE_ID: ${{ secrets.STRIPE_PRO_YEARLY_PRICE_ID }}
           SLACK_BILLING_WEBHOOK_URL: ${{ secrets.SLACK_BILLING_WEBHOOK_URL }}
+          SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
           vercel build --token=$VERCEL_TOKEN
-          VERCEL_URL=$(vercel deploy --prebuilt --token=$VERCEL_TOKEN \
+          VERCEL_URL=$(vercel deploy --prebuilt --archive=tgz --token=$VERCEL_TOKEN \
             --env DATABASE_URL=$DATABASE_URL \
             --env DATABASE_URL_UNPOOLED=$DATABASE_URL_UNPOOLED \
             --env BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET \
@@ -406,7 +374,9 @@ jobs:
             --env STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET \
             --env STRIPE_PRO_MONTHLY_PRICE_ID=$STRIPE_PRO_MONTHLY_PRICE_ID \
             --env STRIPE_PRO_YEARLY_PRICE_ID=$STRIPE_PRO_YEARLY_PRICE_ID \
-            --env SLACK_BILLING_WEBHOOK_URL=$SLACK_BILLING_WEBHOOK_URL)
+            --env SLACK_BILLING_WEBHOOK_URL=$SLACK_BILLING_WEBHOOK_URL \
+            --env SECRETS_ENCRYPTION_KEY=$SECRETS_ENCRYPTION_KEY \
+            --env ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY)
           vercel alias $VERCEL_URL ${{ env.WEB_ALIAS }} --scope=$VERCEL_ORG_ID --token=$VERCEL_TOKEN
           echo "vercel_url=$VERCEL_URL" >> $GITHUB_OUTPUT
 
@@ -448,7 +418,7 @@ jobs:
         run: bun install --frozen
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@$VERCEL_CLI_VERSION
 
       - name: Build and Deploy Marketing
         id: deploy
@@ -477,10 +447,12 @@ jobs:
           STRIPE_PRO_MONTHLY_PRICE_ID: ${{ secrets.STRIPE_PRO_MONTHLY_PRICE_ID }}
           STRIPE_PRO_YEARLY_PRICE_ID: ${{ secrets.STRIPE_PRO_YEARLY_PRICE_ID }}
           SLACK_BILLING_WEBHOOK_URL: ${{ secrets.SLACK_BILLING_WEBHOOK_URL }}
+          SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
           vercel build --token=$VERCEL_TOKEN
-          VERCEL_URL=$(vercel deploy --prebuilt --token=$VERCEL_TOKEN \
+          VERCEL_URL=$(vercel deploy --prebuilt --archive=tgz --token=$VERCEL_TOKEN \
             --env BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET \
             --env NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
             --env NEXT_PUBLIC_WEB_URL=$NEXT_PUBLIC_WEB_URL \
@@ -500,7 +472,9 @@ jobs:
             --env STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET \
             --env STRIPE_PRO_MONTHLY_PRICE_ID=$STRIPE_PRO_MONTHLY_PRICE_ID \
             --env STRIPE_PRO_YEARLY_PRICE_ID=$STRIPE_PRO_YEARLY_PRICE_ID \
-            --env SLACK_BILLING_WEBHOOK_URL=$SLACK_BILLING_WEBHOOK_URL)
+            --env SLACK_BILLING_WEBHOOK_URL=$SLACK_BILLING_WEBHOOK_URL \
+            --env SECRETS_ENCRYPTION_KEY=$SECRETS_ENCRYPTION_KEY \
+            --env ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY)
           vercel alias $VERCEL_URL ${{ env.MARKETING_ALIAS }} --scope=$VERCEL_ORG_ID --token=$VERCEL_TOKEN
           echo "vercel_url=$VERCEL_URL" >> $GITHUB_OUTPUT
 
@@ -553,7 +527,7 @@ jobs:
         run: bun install --frozen
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@$VERCEL_CLI_VERSION
 
       - name: Build and Deploy Admin
         id: deploy
@@ -585,10 +559,12 @@ jobs:
           STRIPE_PRO_MONTHLY_PRICE_ID: ${{ secrets.STRIPE_PRO_MONTHLY_PRICE_ID }}
           STRIPE_PRO_YEARLY_PRICE_ID: ${{ secrets.STRIPE_PRO_YEARLY_PRICE_ID }}
           SLACK_BILLING_WEBHOOK_URL: ${{ secrets.SLACK_BILLING_WEBHOOK_URL }}
+          SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
           vercel build --token=$VERCEL_TOKEN
-          VERCEL_URL=$(vercel deploy --prebuilt --token=$VERCEL_TOKEN \
+          VERCEL_URL=$(vercel deploy --prebuilt --archive=tgz --token=$VERCEL_TOKEN \
             --env DATABASE_URL=$DATABASE_URL \
             --env DATABASE_URL_UNPOOLED=$DATABASE_URL_UNPOOLED \
             --env BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET \
@@ -611,7 +587,9 @@ jobs:
             --env STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET \
             --env STRIPE_PRO_MONTHLY_PRICE_ID=$STRIPE_PRO_MONTHLY_PRICE_ID \
             --env STRIPE_PRO_YEARLY_PRICE_ID=$STRIPE_PRO_YEARLY_PRICE_ID \
-            --env SLACK_BILLING_WEBHOOK_URL=$SLACK_BILLING_WEBHOOK_URL)
+            --env SLACK_BILLING_WEBHOOK_URL=$SLACK_BILLING_WEBHOOK_URL \
+            --env SECRETS_ENCRYPTION_KEY=$SECRETS_ENCRYPTION_KEY \
+            --env ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY)
           vercel alias $VERCEL_URL ${{ env.ADMIN_ALIAS }} --scope=$VERCEL_ORG_ID --token=$VERCEL_TOKEN
           echo "vercel_url=$VERCEL_URL" >> $GITHUB_OUTPUT
 
@@ -653,7 +631,7 @@ jobs:
         run: bun install --frozen
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@$VERCEL_CLI_VERSION
 
       - name: Build and Deploy Docs
         id: deploy
@@ -670,15 +648,17 @@ jobs:
           NEXT_PUBLIC_SENTRY_DSN_DOCS: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN_DOCS }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           NEXT_PUBLIC_SENTRY_ENVIRONMENT: ${{ vars.NEXT_PUBLIC_SENTRY_ENVIRONMENT }}
+          SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
         run: |
           vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
           vercel build --token=$VERCEL_TOKEN
-          VERCEL_URL=$(vercel deploy --prebuilt --token=$VERCEL_TOKEN \
+          VERCEL_URL=$(vercel deploy --prebuilt --archive=tgz --token=$VERCEL_TOKEN \
             --env NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY \
             --env NEXT_PUBLIC_POSTHOG_HOST=$NEXT_PUBLIC_POSTHOG_HOST \
             --env NEXT_PUBLIC_OUTLIT_KEY=$NEXT_PUBLIC_OUTLIT_KEY \
             --env NEXT_PUBLIC_SENTRY_DSN_DOCS=$NEXT_PUBLIC_SENTRY_DSN_DOCS \
-            --env NEXT_PUBLIC_SENTRY_ENVIRONMENT=$NEXT_PUBLIC_SENTRY_ENVIRONMENT)
+            --env NEXT_PUBLIC_SENTRY_ENVIRONMENT=$NEXT_PUBLIC_SENTRY_ENVIRONMENT \
+            --env SECRETS_ENCRYPTION_KEY=$SECRETS_ENCRYPTION_KEY)
           vercel alias $VERCEL_URL ${{ env.DOCS_ALIAS }} --scope=$VERCEL_ORG_ID --token=$VERCEL_TOKEN
           echo "vercel_url=$VERCEL_URL" >> $GITHUB_OUTPUT
 
@@ -699,7 +679,7 @@ jobs:
     name: Post Deployment Comment
     runs-on: ubuntu-latest
     if: always()
-    needs: [deploy-database, deploy-electric, deploy-streams-preview, deploy-api, deploy-web, deploy-marketing, deploy-admin, deploy-docs]
+    needs: [deploy-database, deploy-electric, deploy-api, deploy-web, deploy-marketing, deploy-admin, deploy-docs]
     permissions:
       contents: read
       pull-requests: write
@@ -720,8 +700,6 @@ jobs:
           DATABASE_LINK="Failed to create"
           ELECTRIC_STATUS="❌"
           ELECTRIC_LINK="Failed to deploy"
-          STREAMS_STATUS="❌"
-          STREAMS_LINK="Failed to deploy"
           API_STATUS="❌"
           API_LINK="Failed to deploy"
           WEB_STATUS="❌"
@@ -739,10 +717,6 @@ jobs:
 
           if [[ "${{ needs.deploy-electric.result }}" == "success" ]]; then
             source electric-status.env
-          fi
-
-          if [[ "${{ needs.deploy-streams-preview.result }}" == "success" ]]; then
-            source streams-status.env
           fi
 
           if [[ "${{ needs.deploy-api.result }}" == "success" ]]; then
@@ -765,7 +739,7 @@ jobs:
             source docs-status.env
           fi
 
-          export DATABASE_STATUS DATABASE_LINK ELECTRIC_STATUS ELECTRIC_LINK STREAMS_STATUS STREAMS_LINK API_STATUS API_LINK WEB_STATUS WEB_LINK MARKETING_STATUS MARKETING_LINK ADMIN_STATUS ADMIN_LINK DOCS_STATUS DOCS_LINK
+          export DATABASE_STATUS DATABASE_LINK ELECTRIC_STATUS ELECTRIC_LINK API_STATUS API_LINK WEB_STATUS WEB_LINK MARKETING_STATUS MARKETING_LINK ADMIN_STATUS ADMIN_LINK DOCS_STATUS DOCS_LINK
           envsubst < .github/templates/preview-comment.md > final-comment.md
 
       - name: Post final deployment comment

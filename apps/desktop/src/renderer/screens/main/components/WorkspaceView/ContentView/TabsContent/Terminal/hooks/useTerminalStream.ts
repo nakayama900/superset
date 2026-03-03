@@ -31,9 +31,6 @@ export interface UseTerminalStreamReturn {
 	handleStreamData: (event: TerminalStreamEvent) => void;
 }
 
-/**
- * Hook to handle terminal stream events (data, exit, disconnect, error).
- */
 export function useTerminalStream({
 	paneId,
 	xtermRef,
@@ -102,7 +99,7 @@ export function useTerminalStream({
 				event.code === "WRITE_FAILED" &&
 				event.error?.includes("Session not found")
 			) {
-				setConnectionError("Session lost - click to reconnect");
+				setConnectionError("Session lost");
 				return;
 			}
 
@@ -149,6 +146,7 @@ export function useTerminalStream({
 						`[Terminal] First stream data received: ${paneId}, ${event.data.length} bytes`,
 					);
 				}
+
 				updateModesRef.current(event.data);
 				xterm.write(event.data);
 				updateCwdRef.current(event.data);

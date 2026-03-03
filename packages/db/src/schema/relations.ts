@@ -15,13 +15,18 @@ import {
 } from "./github";
 import {
 	agentCommands,
+	chatSessions,
 	devicePresence,
 	integrationConnections,
-	repositories,
+	projects,
+	sandboxImages,
+	secrets,
+	sessionHosts,
 	subscriptions,
 	taskStatuses,
 	tasks,
 	usersSlackUsers,
+	workspaces,
 } from "./schema";
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -35,6 +40,7 @@ export const usersRelations = relations(users, ({ many }) => ({
 	githubInstallations: many(githubInstallations),
 	devicePresence: many(devicePresence),
 	agentCommands: many(agentCommands),
+	chatSessions: many(chatSessions),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -55,13 +61,17 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
 	members: many(members),
 	invitations: many(invitations),
 	subscriptions: many(subscriptions),
-	repositories: many(repositories),
+	projects: many(projects),
+	secrets: many(secrets),
+	sandboxImages: many(sandboxImages),
+	workspaces: many(workspaces),
 	tasks: many(tasks),
 	taskStatuses: many(taskStatuses),
 	integrations: many(integrationConnections),
 	githubInstallations: many(githubInstallations),
 	devicePresence: many(devicePresence),
 	agentCommands: many(agentCommands),
+	chatSessions: many(chatSessions),
 }));
 
 export const membersRelations = relations(members, ({ one }) => ({
@@ -93,22 +103,7 @@ export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
 	}),
 }));
 
-export const repositoriesRelations = relations(
-	repositories,
-	({ one, many }) => ({
-		organization: one(organizations, {
-			fields: [repositories.organizationId],
-			references: [organizations.id],
-		}),
-		tasks: many(tasks),
-	}),
-);
-
 export const tasksRelations = relations(tasks, ({ one }) => ({
-	repository: one(repositories, {
-		fields: [tasks.repositoryId],
-		references: [repositories.id],
-	}),
 	organization: one(organizations, {
 		fields: [tasks.organizationId],
 		references: [organizations.id],
@@ -178,6 +173,7 @@ export const githubRepositoriesRelations = relations(
 			references: [githubInstallations.id],
 		}),
 		pullRequests: many(githubPullRequests),
+		projects: many(projects),
 	}),
 );
 
@@ -232,3 +228,89 @@ export const usersSlackUsersRelations = relations(
 		}),
 	}),
 );
+
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+	organization: one(organizations, {
+		fields: [projects.organizationId],
+		references: [organizations.id],
+	}),
+	githubRepository: one(githubRepositories, {
+		fields: [projects.githubRepositoryId],
+		references: [githubRepositories.id],
+	}),
+	secrets: many(secrets),
+	sandboxImage: one(sandboxImages),
+	workspaces: many(workspaces),
+}));
+
+export const secretsRelations = relations(secrets, ({ one }) => ({
+	organization: one(organizations, {
+		fields: [secrets.organizationId],
+		references: [organizations.id],
+	}),
+	project: one(projects, {
+		fields: [secrets.projectId],
+		references: [projects.id],
+	}),
+	createdBy: one(users, {
+		fields: [secrets.createdByUserId],
+		references: [users.id],
+	}),
+}));
+
+export const sandboxImagesRelations = relations(sandboxImages, ({ one }) => ({
+	organization: one(organizations, {
+		fields: [sandboxImages.organizationId],
+		references: [organizations.id],
+	}),
+	project: one(projects, {
+		fields: [sandboxImages.projectId],
+		references: [projects.id],
+	}),
+}));
+
+export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
+	organization: one(organizations, {
+		fields: [workspaces.organizationId],
+		references: [organizations.id],
+	}),
+	project: one(projects, {
+		fields: [workspaces.projectId],
+		references: [projects.id],
+	}),
+	createdBy: one(users, {
+		fields: [workspaces.createdByUserId],
+		references: [users.id],
+	}),
+	chatSessions: many(chatSessions),
+}));
+
+export const chatSessionsRelations = relations(
+	chatSessions,
+	({ one, many }) => ({
+		organization: one(organizations, {
+			fields: [chatSessions.organizationId],
+			references: [organizations.id],
+		}),
+		createdBy: one(users, {
+			fields: [chatSessions.createdBy],
+			references: [users.id],
+		}),
+		workspace: one(workspaces, {
+			fields: [chatSessions.workspaceId],
+			references: [workspaces.id],
+		}),
+		sessionHosts: many(sessionHosts),
+	}),
+);
+
+export const sessionHostsRelations = relations(sessionHosts, ({ one }) => ({
+	chatSession: one(chatSessions, {
+		fields: [sessionHosts.sessionId],
+		references: [chatSessions.id],
+	}),
+	organization: one(organizations, {
+		fields: [sessionHosts.organizationId],
+		references: [organizations.id],
+	}),
+}));

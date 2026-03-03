@@ -16,6 +16,7 @@ import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
 import { authClient, getAuthToken } from "renderer/lib/auth-client";
 import { dragDropManager } from "renderer/lib/dnd";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { InitGitDialog } from "renderer/react-query/projects/InitGitDialog";
 import { WorkspaceInitEffects } from "renderer/screens/main/components/WorkspaceInitEffects";
 import { useHotkeysSync } from "renderer/stores/hotkeys";
 import { useAgentHookListener } from "renderer/stores/tabs/useAgentHookListener";
@@ -30,7 +31,12 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthenticatedLayout() {
-	const { data: session, isPending, refetch } = authClient.useSession();
+	const {
+		data: session,
+		isPending,
+		isRefetching,
+		refetch,
+	} = authClient.useSession();
 	const hasLocalToken = !!getAuthToken();
 	const isOnline = useOnlineStatus();
 	const navigate = useNavigate();
@@ -73,15 +79,18 @@ function AuthenticatedLayout() {
 		},
 	});
 
-	if (isPending && !env.SKIP_ENV_VALIDATION) {
-		if (hasLocalToken) {
-			return (
-				<div className="flex h-screen w-screen items-center justify-center bg-background">
-					<Spinner className="size-8" />
-				</div>
-			);
-		}
+	if (isPending && !hasLocalToken && !env.SKIP_ENV_VALIDATION) {
 		return <Navigate to="/sign-in" replace />;
+	}
+	if (
+		(isPending || (isRefetching && !session?.user && hasLocalToken)) &&
+		!env.SKIP_ENV_VALIDATION
+	) {
+		return (
+			<div className="flex h-screen w-screen items-center justify-center bg-background">
+				<Spinner className="size-8" />
+			</div>
+		);
 	}
 
 	if (!isSignedIn && hasLocalToken && !isOnline) {
@@ -116,6 +125,7 @@ function AuthenticatedLayout() {
 				<Outlet />
 				<WorkspaceInitEffects />
 				<NewWorkspaceModal />
+				<InitGitDialog />
 				<TeardownLogsDialog />
 				<Paywall />
 			</CollectionsProvider>

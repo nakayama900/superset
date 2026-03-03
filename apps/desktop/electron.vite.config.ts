@@ -105,7 +105,14 @@ export default defineConfig({
 				output: {
 					dir: resolve(devPath, "main"),
 				},
-				external: ["electron", "better-sqlite3", "node-pty"],
+				external: [
+					"electron",
+					"better-sqlite3",
+					"node-pty",
+					"pg-native",
+					"@ast-grep/napi",
+					"libsql",
+				],
 				plugins: [sentryPlugin].filter(Boolean),
 			},
 		},
@@ -161,6 +168,10 @@ export default defineConfig({
 				process.env.NEXT_PUBLIC_WEB_URL,
 				"https://app.superset.sh",
 			),
+			"process.env.NEXT_PUBLIC_ELECTRIC_URL": defineEnv(
+				process.env.NEXT_PUBLIC_ELECTRIC_URL,
+				"https://api.superset.sh/api/electric",
+			),
 			"process.env.NEXT_PUBLIC_DOCS_URL": defineEnv(
 				process.env.NEXT_PUBLIC_DOCS_URL,
 				"https://docs.superset.sh",
@@ -210,13 +221,13 @@ export default defineConfig({
 			}),
 			tsconfigPaths,
 			tailwindcss(),
-			reactPlugin(),
 			codeInspectorPlugin({
 				bundler: "vite",
 				hotKeys: ["altKey"],
 				hideConsole: true,
 				port: Number(process.env.CODE_INSPECTOR_PORT) || undefined,
 			}),
+			reactPlugin(),
 			htmlEnvTransformPlugin(),
 		],
 

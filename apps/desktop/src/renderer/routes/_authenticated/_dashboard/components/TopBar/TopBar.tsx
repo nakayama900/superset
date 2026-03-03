@@ -5,6 +5,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { NavigationControls } from "./components/NavigationControls";
 import { OpenInMenuButton } from "./components/OpenInMenuButton";
 import { OrganizationDropdown } from "./components/OrganizationDropdown";
+import { ResourceConsumption } from "./components/ResourceConsumption";
 import { SidebarToggle } from "./components/SidebarToggle";
 import { WindowControls } from "./components/WindowControls";
 
@@ -20,7 +21,7 @@ export function TopBar() {
 	const isMac = platform === undefined || platform === "darwin";
 
 	return (
-		<div className="drag gap-2 h-12 w-full flex items-center justify-between bg-background border-b border-border relative">
+		<div className="drag gap-2 h-12 w-full flex items-center justify-between bg-muted/45 border-b border-border relative dark:bg-muted/35">
 			<div
 				className="flex items-center gap-1.5 h-full"
 				style={{
@@ -29,6 +30,7 @@ export function TopBar() {
 			>
 				<SidebarToggle />
 				<NavigationControls />
+				<ResourceConsumption />
 			</div>
 
 			{workspace?.project?.name && (
@@ -52,6 +54,7 @@ export function TopBar() {
 					<OpenInMenuButton
 						worktreePath={workspace.worktreePath}
 						branch={workspace.worktree?.branch}
+						projectId={workspace.project?.id}
 					/>
 				)}
 				<OrganizationDropdown />

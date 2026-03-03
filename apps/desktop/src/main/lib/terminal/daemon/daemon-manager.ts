@@ -320,9 +320,8 @@ export class DaemonTerminalManager extends EventEmitter {
 			cwd,
 			cols = 80,
 			rows = 24,
-			initialCommands,
 			skipColdRestore,
-			portBase,
+			themeType,
 		} = params;
 
 		try {
@@ -380,7 +379,7 @@ export class DaemonTerminalManager extends EventEmitter {
 				workspaceName,
 				workspacePath,
 				rootPath,
-				portBase,
+				themeType,
 			});
 
 			if (DEBUG_TERMINAL) {
@@ -406,7 +405,6 @@ export class DaemonTerminalManager extends EventEmitter {
 				cwd,
 				env,
 				shell,
-				initialCommands,
 			});
 
 			this.daemonAliveSessionIds.add(paneId);
@@ -459,12 +457,7 @@ export class DaemonTerminalManager extends EventEmitter {
 				);
 			}
 
-			if (response.isNew) {
-				track("terminal_opened", {
-					workspace_id: workspaceId,
-					pane_id: paneId,
-				});
-			} else if (response.wasRecovered) {
+			if (response.wasRecovered) {
 				track("terminal_warm_attached", {
 					workspace_id: workspaceId,
 					pane_id: paneId,

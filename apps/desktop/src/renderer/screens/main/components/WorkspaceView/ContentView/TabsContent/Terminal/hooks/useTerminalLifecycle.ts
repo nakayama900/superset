@@ -97,7 +97,7 @@ export interface UseTerminalLifecycleOptions {
 	handleFileLinkClickRef: MutableRefObject<
 		(path: string, line?: number, column?: number) => void
 	>;
-	paneInitialCommandsRef: MutableRefObject<string[] | undefined>;
+	handleUrlClickRef: MutableRefObject<((url: string) => void) | undefined>;
 	paneInitialCwdRef: MutableRefObject<string | undefined>;
 	clearPaneInitialDataRef: MutableRefObject<(paneId: string) => void>;
 	setConnectionError: (error: string | null) => void;
@@ -124,6 +124,14 @@ export interface UseTerminalLifecycleOptions {
 	unregisterClearCallbackRef: MutableRefObject<UnregisterCallback>;
 	registerScrollToBottomCallbackRef: MutableRefObject<RegisterCallback>;
 	unregisterScrollToBottomCallbackRef: MutableRefObject<UnregisterCallback>;
+	registerGetSelectionCallbackRef: MutableRefObject<
+		(paneId: string, callback: () => string) => void
+	>;
+	unregisterGetSelectionCallbackRef: MutableRefObject<UnregisterCallback>;
+	registerPasteCallbackRef: MutableRefObject<
+		(paneId: string, callback: (text: string) => void) => void
+	>;
+	unregisterPasteCallbackRef: MutableRefObject<UnregisterCallback>;
 }
 
 export interface UseTerminalLifecycleReturn {
@@ -149,7 +157,7 @@ export function useTerminalLifecycle({
 	initialThemeRef,
 	workspaceCwdRef,
 	handleFileLinkClickRef,
-	paneInitialCommandsRef,
+	handleUrlClickRef,
 	paneInitialCwdRef,
 	clearPaneInitialDataRef,
 	setConnectionError,
@@ -176,6 +184,10 @@ export function useTerminalLifecycle({
 	unregisterClearCallbackRef,
 	registerScrollToBottomCallbackRef,
 	unregisterScrollToBottomCallbackRef,
+	registerGetSelectionCallbackRef,
+	unregisterGetSelectionCallbackRef,
+	registerPasteCallbackRef,
+	unregisterPasteCallbackRef,
 }: UseTerminalLifecycleOptions): UseTerminalLifecycleReturn {
 	const [xtermInstance, setXtermInstance] = useState<XTerm | null>(null);
 	const restartTerminalRef = useRef<() => void>(() => {});
@@ -213,6 +225,7 @@ export function useTerminalLifecycle({
 			initialTheme: initialThemeRef.current,
 			onFileLinkClick: (path, line, column) =>
 				handleFileLinkClickRef.current(path, line, column),
+			onUrlClickRef: handleUrlClickRef,
 		});
 
 		const scheduleScrollToBottom = () => {
@@ -347,7 +360,6 @@ export function useTerminalLifecycle({
 			}
 		};
 
-		const initialCommands = paneInitialCommandsRef.current;
 		const initialCwd = paneInitialCwdRef.current;
 
 		const cancelInitialAttach = scheduleTerminalAttach({
@@ -386,16 +398,13 @@ export function useTerminalLifecycle({
 							workspaceId,
 							cols: xterm.cols,
 							rows: xterm.rows,
-							initialCommands,
 							cwd: initialCwd,
 						},
 						{
 							onSuccess: (result) => {
 								if (!isAttachActive()) return;
 								setConnectionError(null);
-								if (initialCommands || initialCwd) {
-									clearPaneInitialDataRef.current(paneId);
-								}
+								clearPaneInitialDataRef.current(paneId);
 
 								const storedColdRestore = coldRestoreState.get(paneId);
 								if (storedColdRestore?.isRestored) {
@@ -490,6 +499,23 @@ export function useTerminalLifecycle({
 		registerClearCallbackRef.current(paneId, handleClear);
 		registerScrollToBottomCallbackRef.current(paneId, handleScrollToBottom);
 
+		const handleGetSelection = () => {
+			const selection = xterm.getSelection();
+			if (!selection) return "";
+			return selection
+				.split("\n")
+				.map((line) => line.trimEnd())
+				.join("\n");
+		};
+
+		const handlePaste = (text: string) => {
+			if (isExitedRef.current) return;
+			xterm.paste(text);
+		};
+
+		registerGetSelectionCallbackRef.current(paneId, handleGetSelection);
+		registerPasteCallbackRef.current(paneId, handlePaste);
+
 		const cleanupFocus = setupFocusListener(xterm, () =>
 			handleTerminalFocusRef.current(),
 		);
@@ -507,25 +533,89 @@ export function useTerminalLifecycle({
 			isBracketedPasteEnabled: () => isBracketedPasteRef.current,
 		});
 		const cleanupCopy = setupCopyHandler(xterm);
+		const reattachRecovery = {
+			throttleMs: 120,
+			pendingFrame: null as number | null,
+			lastRunAt: 0,
+			pendingForceResize: false,
+		};
 
-		const handleVisibilityChange = () => {
-			if (document.hidden || isUnmounted) return;
-			const buffer = xterm.buffer.active;
-			const wasAtBottom = buffer.viewportY >= buffer.baseY;
+		const isCurrentTerminalRenderable = () => {
+			if (isUnmounted || xtermRef.current !== xterm) return false;
+			if (!container.isConnected) return false;
+
+			const style = window.getComputedStyle(container);
+			if (style.display === "none" || style.visibility === "hidden") {
+				return false;
+			}
+
+			const rect = container.getBoundingClientRect();
+			return rect.width > 1 && rect.height > 1;
+		};
+
+		const runReattachRecovery = (forceResize: boolean) => {
+			if (!isCurrentTerminalRenderable()) return;
+
 			const prevCols = xterm.cols;
 			const prevRows = xterm.rows;
+			const wasAtBottom =
+				xterm.buffer.active.viewportY >= xterm.buffer.active.baseY;
+
+			// Rebuild stale WebGL glyph cache after occlusion and force a paint pass.
+			rendererRef.current?.current.clearTextureAtlas?.();
+
 			fitAddon.fit();
-			if (xterm.cols !== prevCols || xterm.rows !== prevRows) {
+			xterm.refresh(0, Math.max(0, xterm.rows - 1));
+
+			if (forceResize || xterm.cols !== prevCols || xterm.rows !== prevRows) {
 				resizeRef.current({ paneId, cols: xterm.cols, rows: xterm.rows });
 			}
-			if (wasAtBottom) {
-				requestAnimationFrame(() => {
-					if (isUnmounted || xtermRef.current !== xterm) return;
-					scrollToBottom(xterm);
-				});
+
+			if (isFocusedRef.current && document.hasFocus()) {
+				xterm.focus();
 			}
+
+			if (!wasAtBottom) return;
+			requestAnimationFrame(() => {
+				if (isUnmounted || xtermRef.current !== xterm) return;
+				scrollToBottom(xterm);
+			});
 		};
+
+		const scheduleReattachRecovery = (forceResize: boolean) => {
+			reattachRecovery.pendingForceResize ||= forceResize;
+			if (reattachRecovery.pendingFrame !== null) return;
+
+			reattachRecovery.pendingFrame = requestAnimationFrame(() => {
+				reattachRecovery.pendingFrame = null;
+
+				const now = Date.now();
+				if (now - reattachRecovery.lastRunAt < reattachRecovery.throttleMs)
+					return;
+				reattachRecovery.lastRunAt = now;
+
+				const shouldForceResize = reattachRecovery.pendingForceResize;
+				reattachRecovery.pendingForceResize = false;
+				runReattachRecovery(shouldForceResize);
+			});
+		};
+
+		const cancelReattachRecovery = () => {
+			if (reattachRecovery.pendingFrame === null) return;
+			cancelAnimationFrame(reattachRecovery.pendingFrame);
+			reattachRecovery.pendingFrame = null;
+		};
+
+		const handleVisibilityChange = () => {
+			if (document.hidden) return;
+			scheduleReattachRecovery(isFocusedRef.current);
+		};
+		const handleWindowFocus = () => {
+			scheduleReattachRecovery(isFocusedRef.current);
+		};
+
 		document.addEventListener("visibilitychange", handleVisibilityChange);
+		window.addEventListener("focus", handleWindowFocus);
 
 		const isPaneDestroyedInStore = () =>
 			isPaneDestroyed(useTabsStore.getState().panes, paneId);
@@ -545,7 +635,9 @@ export function useTerminalLifecycle({
 			}
 			clearAttachInFlight(paneId, cleanupAttachId);
 			if (firstRenderFallback) clearTimeout(firstRenderFallback);
+			cancelReattachRecovery();
 			document.removeEventListener("visibilitychange", handleVisibilityChange);
+			window.removeEventListener("focus", handleWindowFocus);
 			inputDisposable.dispose();
 			keyDisposable.dispose();
 			titleDisposable.dispose();
@@ -558,6 +650,8 @@ export function useTerminalLifecycle({
 			cleanupQuerySuppression();
 			unregisterClearCallbackRef.current(paneId);
 			unregisterScrollToBottomCallbackRef.current(paneId);
+			unregisterGetSelectionCallbackRef.current(paneId);
+			unregisterPasteCallbackRef.current(paneId);
 
 			if (isPaneDestroyedInStore()) {
 				// Pane was explicitly destroyed, so kill the session.

@@ -2,8 +2,9 @@ import { projects, workspaces, worktrees } from "@superset/local-db";
 import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import { eq } from "drizzle-orm";
+import { appState } from "main/lib/app-state";
 import { localDb } from "main/lib/local-db";
-import { getDaemonTerminalManager } from "main/lib/terminal";
+import { restartDaemon as restartDaemonShared } from "main/lib/terminal";
 import {
 	TERMINAL_SESSION_KILLED_MESSAGE,
 	TerminalKilledError,
@@ -14,6 +15,7 @@ import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { assertWorkspaceUsable } from "../workspaces/utils/usability";
 import { getWorkspacePath } from "../workspaces/utils/worktree";
+import { resolveTerminalThemeType } from "./theme-type";
 import { resolveCwd } from "./utils";
 
 const DEBUG_TERMINAL = process.env.SUPERSET_TERMINAL_DEBUG === "1";
@@ -63,9 +65,9 @@ export const createTerminalRouter = () => {
 					cols: z.number().optional(),
 					rows: z.number().optional(),
 					cwd: z.string().optional(),
-					initialCommands: z.array(z.string()).optional(),
 					skipColdRestore: z.boolean().optional(),
 					allowKilled: z.boolean().optional(),
+					themeType: z.enum(["dark", "light"]).optional(),
 				}),
 			)
 			.mutation(async ({ input }) => {
@@ -78,9 +80,9 @@ export const createTerminalRouter = () => {
 					cols,
 					rows,
 					cwd: cwdOverride,
-					initialCommands,
 					skipColdRestore,
 					allowKilled,
+					themeType,
 				} = input;
 
 				const workspace = localDb
@@ -115,6 +117,10 @@ export const createTerminalRouter = () => {
 							.where(eq(projects.id, workspace.projectId))
 							.get()
 					: undefined;
+				const resolvedThemeType = resolveTerminalThemeType({
+					requestedThemeType: themeType,
+					persistedThemeState: appState.data.themeState,
+				});
 
 				try {
 					const result = await terminal.createOrAttach({
@@ -127,10 +133,9 @@ export const createTerminalRouter = () => {
 						cwd,
 						cols,
 						rows,
-						initialCommands,
 						skipColdRestore,
 						allowKilled,
-						portBase: workspace?.portBase,
+						themeType: resolvedThemeType,
 					});
 
 					if (DEBUG_TERMINAL) {
@@ -192,9 +197,11 @@ export const createTerminalRouter = () => {
 				z.object({
 					paneId: z.string(),
 					data: z.string(),
+					throwOnError: z.boolean().optional(),
 				}),
 			)
 			.mutation(async ({ input }) => {
+				const shouldThrow = input.throwOnError ?? false;
 				try {
 					terminal.write(input);
 				} catch (error) {
@@ -204,6 +211,12 @@ export const createTerminalRouter = () => {
 					// Emit exit instead of error for deleted sessions to prevent toast floods
 					if (message.includes("not found or not alive")) {
 						terminal.emit(`exit:${input.paneId}`, 0, 15);
+						if (shouldThrow) {
+							throw new TRPCError({
+								code: "BAD_REQUEST",
+								message,
+							});
+						}
 						return;
 					}
 
@@ -211,6 +224,12 @@ export const createTerminalRouter = () => {
 						error: message,
 						code: "WRITE_FAILED",
 					});
+					if (shouldThrow) {
+						throw new TRPCError({
+							code: "INTERNAL_SERVER_ERROR",
+							message,
+						});
+					}
 				}
 			}),
 
@@ -381,45 +400,7 @@ export const createTerminalRouter = () => {
 
 		/** Restart daemon to recover from stuck state. Kills all sessions. */
 		restartDaemon: publicProcedure.mutation(async () => {
-			console.log("[restartDaemon] Starting daemon restart...");
-
-			try {
-				const client = getTerminalHostClient();
-				const connected = await client.tryConnectAndAuthenticate();
-
-				if (connected) {
-					const { sessions } = await client.listSessions();
-					const aliveCount = sessions.filter((s) => s.isAlive).length;
-					console.log(
-						`[restartDaemon] Shutting down daemon with ${aliveCount} alive sessions`,
-					);
-
-					for (const session of sessions) {
-						void terminal.kill({ paneId: session.sessionId }).catch((error) => {
-							console.warn(
-								"[restartDaemon] Failed to mark session killed:",
-								error,
-							);
-						});
-					}
-
-					await client.shutdownIfRunning({ killSessions: true });
-				} else {
-					console.log("[restartDaemon] Daemon was not running");
-				}
-			} catch (error) {
-				console.warn(
-					"[restartDaemon] Error during shutdown (continuing):",
-					error,
-				);
-			}
-
-			const manager = getDaemonTerminalManager();
-			manager.reset();
-
-			console.log("[restartDaemon] Complete");
-
-			return { success: true };
+			return restartDaemonShared();
 		}),
 
 		getSession: publicProcedure

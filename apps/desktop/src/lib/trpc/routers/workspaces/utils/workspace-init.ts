@@ -4,6 +4,8 @@ import { track } from "main/lib/analytics";
 import { localDb } from "main/lib/local-db";
 import { workspaceInitManager } from "main/lib/workspace-init-manager";
 import type { WorkspaceInitStep } from "shared/types/workspace-init";
+import { resolveWorkspaceBaseBranch } from "./base-branch";
+import { getBranchBaseConfig, setBranchBaseConfig } from "./base-branch-config";
 import {
 	branchExistsOnRemote,
 	createWorktree,
@@ -23,9 +25,6 @@ export interface WorkspaceInitParams {
 	worktreeId: string;
 	worktreePath: string;
 	branch: string;
-	baseBranch: string;
-	/** If true, user explicitly specified baseBranch - don't auto-update it */
-	baseBranchWasExplicit: boolean;
 	mainRepoPath: string;
 	/** If true, use an existing branch instead of creating a new one */
 	useExistingBranch?: boolean;
@@ -45,8 +44,6 @@ export async function initializeWorkspaceWorktree({
 	worktreeId,
 	worktreePath,
 	branch,
-	baseBranch,
-	baseBranchWasExplicit,
 	mainRepoPath,
 	useExistingBranch,
 	skipWorktreeCreation,
@@ -62,6 +59,24 @@ export async function initializeWorkspaceWorktree({
 		if (manager.isCancellationRequested(workspaceId)) {
 			return;
 		}
+
+		const project = localDb
+			.select()
+			.from(projects)
+			.where(eq(projects.id, projectId))
+			.get();
+
+		const { baseBranch: gitConfigBase, isExplicit: baseBranchWasExplicit } =
+			await getBranchBaseConfig({
+				repoPath: mainRepoPath,
+				branch,
+			});
+		let effectiveBaseBranch =
+			gitConfigBase ||
+			resolveWorkspaceBaseBranch({
+				workspaceBaseBranch: project?.workspaceBaseBranch,
+				defaultBranch: project?.defaultBranch,
+			});
 
 		if (useExistingBranch) {
 			if (skipWorktreeCreation) {
@@ -118,6 +133,8 @@ export async function initializeWorkspaceWorktree({
 					gitStatus: {
 						branch,
 						needsRebase: false,
+						ahead: 0,
+						behind: 0,
 						lastRefreshed: Date.now(),
 					},
 				})
@@ -130,7 +147,7 @@ export async function initializeWorkspaceWorktree({
 				workspace_id: workspaceId,
 				project_id: projectId,
 				branch,
-				base_branch: branch, // For existing branch, base = branch
+				base_branch: branch,
 				use_existing_branch: true,
 			});
 
@@ -140,32 +157,12 @@ export async function initializeWorkspaceWorktree({
 		manager.updateProgress(workspaceId, "syncing", "Syncing with remote...");
 		const remoteDefaultBranch = await refreshDefaultBranch(mainRepoPath);
 
-		let effectiveBaseBranch = baseBranch;
-
 		if (remoteDefaultBranch) {
-			const project = localDb
-				.select()
-				.from(projects)
-				.where(eq(projects.id, projectId))
-				.get();
 			if (project && remoteDefaultBranch !== project.defaultBranch) {
 				localDb
 					.update(projects)
 					.set({ defaultBranch: remoteDefaultBranch })
 					.where(eq(projects.id, projectId))
-					.run();
-			}
-
-			// Update worktree record so retries use the correct branch
-			if (!baseBranchWasExplicit && remoteDefaultBranch !== baseBranch) {
-				console.log(
-					`[workspace-init] Auto-updating baseBranch from "${baseBranch}" to "${remoteDefaultBranch}" for workspace ${workspaceId}`,
-				);
-				effectiveBaseBranch = remoteDefaultBranch;
-				localDb
-					.update(worktrees)
-					.set({ baseBranch: remoteDefaultBranch })
-					.where(eq(worktrees.id, worktreeId))
 					.run();
 			}
 		}
@@ -237,11 +234,6 @@ export async function initializeWorkspaceWorktree({
 			return null;
 		};
 
-		/**
-		 * Resolves a local git ref to use as the start point, applying any
-		 * fallback branch if the original wasn't found. Returns the ref
-		 * string or null if no usable ref exists.
-		 */
 		const resolveLocalRef = async ({
 			reason,
 			checkOriginRefs,
@@ -260,6 +252,12 @@ export async function initializeWorkspaceWorktree({
 					`[workspace-init] Updating baseBranch from "${originalBranch}" to "${result.fallbackBranch}" for workspace ${workspaceId}`,
 				);
 				effectiveBaseBranch = result.fallbackBranch;
+				await setBranchBaseConfig({
+					repoPath: mainRepoPath,
+					branch,
+					baseBranch: result.fallbackBranch,
+					isExplicit: false,
+				});
 				localDb
 					.update(worktrees)
 					.set({ baseBranch: result.fallbackBranch })
@@ -438,6 +436,8 @@ export async function initializeWorkspaceWorktree({
 				gitStatus: {
 					branch,
 					needsRebase: false,
+					ahead: 0,
+					behind: 0,
 					lastRefreshed: Date.now(),
 				},
 			})

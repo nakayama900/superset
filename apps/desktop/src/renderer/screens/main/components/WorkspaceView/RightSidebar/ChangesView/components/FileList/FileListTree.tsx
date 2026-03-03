@@ -36,12 +36,15 @@ interface FileListTreeProps {
 	showStats?: boolean;
 	onStage?: (file: ChangedFile) => void;
 	onUnstage?: (file: ChangedFile) => void;
+	onStageFiles?: (files: ChangedFile[]) => void;
+	onUnstageFiles?: (files: ChangedFile[]) => void;
 	isActioning?: boolean;
 	worktreePath: string;
 	onDiscard?: (file: ChangedFile) => void;
 	category?: ChangeCategory;
 	commitHash?: string;
 	isExpandedView?: boolean;
+	projectId?: string;
 }
 
 function buildFileTree(files: ChangedFile[]): FileTreeNode[] {
@@ -105,12 +108,15 @@ interface TreeNodeComponentProps {
 	showStats?: boolean;
 	onStage?: (file: ChangedFile) => void;
 	onUnstage?: (file: ChangedFile) => void;
+	onStageFiles?: (files: ChangedFile[]) => void;
+	onUnstageFiles?: (files: ChangedFile[]) => void;
 	isActioning?: boolean;
 	worktreePath: string;
 	onDiscard?: (file: ChangedFile) => void;
 	category?: ChangeCategory;
 	commitHash?: string;
 	isExpandedView?: boolean;
+	projectId?: string;
 }
 
 function TreeNodeComponent({
@@ -122,12 +128,15 @@ function TreeNodeComponent({
 	showStats,
 	onStage,
 	onUnstage,
+	onStageFiles,
+	onUnstageFiles,
 	isActioning,
 	worktreePath,
 	onDiscard,
 	category,
 	commitHash,
 	isExpandedView,
+	projectId,
 }: TreeNodeComponentProps) {
 	const [isExpanded, setIsExpanded] = useState(true);
 	const hasChildren = node.children && node.children.length > 0;
@@ -135,20 +144,24 @@ function TreeNodeComponent({
 	const isSelected = selectedPath === node.path && !selectedCommitHash;
 
 	const handleStageAll = useCallback(() => {
-		if (!onStage) return;
-		const files = collectFilesFromNode(node);
-		for (const file of files) {
-			onStage(file);
+		if (onStageFiles) {
+			onStageFiles(collectFilesFromNode(node));
+		} else if (onStage) {
+			for (const file of collectFilesFromNode(node)) {
+				onStage(file);
+			}
 		}
-	}, [node, onStage]);
+	}, [node, onStage, onStageFiles]);
 
 	const handleUnstageAll = useCallback(() => {
-		if (!onUnstage) return;
-		const files = collectFilesFromNode(node);
-		for (const file of files) {
-			onUnstage(file);
+		if (onUnstageFiles) {
+			onUnstageFiles(collectFilesFromNode(node));
+		} else if (onUnstage) {
+			for (const file of collectFilesFromNode(node)) {
+				onUnstage(file);
+			}
 		}
-	}, [node, onUnstage]);
+	}, [node, onUnstage, onUnstageFiles]);
 
 	const handleDiscardAll = useCallback(() => {
 		if (!onDiscard) return;
@@ -168,8 +181,11 @@ function TreeNodeComponent({
 				variant="tree"
 				folderPath={node.path}
 				worktreePath={worktreePath}
-				onStageAll={onStage ? handleStageAll : undefined}
-				onUnstageAll={onUnstage ? handleUnstageAll : undefined}
+				projectId={projectId}
+				onStageAll={onStage || onStageFiles ? handleStageAll : undefined}
+				onUnstageAll={
+					onUnstage || onUnstageFiles ? handleUnstageAll : undefined
+				}
 				onDiscardAll={onDiscard ? handleDiscardAll : undefined}
 				isActioning={isActioning}
 			>
@@ -184,12 +200,15 @@ function TreeNodeComponent({
 						showStats={showStats}
 						onStage={onStage}
 						onUnstage={onUnstage}
+						onStageFiles={onStageFiles}
+						onUnstageFiles={onUnstageFiles}
 						isActioning={isActioning}
 						worktreePath={worktreePath}
 						onDiscard={onDiscard}
 						category={category}
 						commitHash={commitHash}
 						isExpandedView={isExpandedView}
+						projectId={projectId}
 					/>
 				))}
 			</FolderRow>
@@ -209,6 +228,7 @@ function TreeNodeComponent({
 				onUnstage={onUnstage ? () => onUnstage(file) : undefined}
 				isActioning={isActioning}
 				worktreePath={worktreePath}
+				projectId={projectId}
 				onDiscard={onDiscard ? () => onDiscard(file) : undefined}
 				category={category}
 				commitHash={commitHash}
@@ -228,12 +248,15 @@ export function FileListTree({
 	showStats = true,
 	onStage,
 	onUnstage,
+	onStageFiles,
+	onUnstageFiles,
 	isActioning,
 	worktreePath,
 	onDiscard,
 	category,
 	commitHash,
 	isExpandedView,
+	projectId,
 }: FileListTreeProps) {
 	const tree = buildFileTree(files);
 
@@ -249,12 +272,15 @@ export function FileListTree({
 					showStats={showStats}
 					onStage={onStage}
 					onUnstage={onUnstage}
+					onStageFiles={onStageFiles}
+					onUnstageFiles={onUnstageFiles}
 					isActioning={isActioning}
 					worktreePath={worktreePath}
 					onDiscard={onDiscard}
 					category={category}
 					commitHash={commitHash}
 					isExpandedView={isExpandedView}
+					projectId={projectId}
 				/>
 			))}
 		</div>

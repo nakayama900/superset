@@ -8,7 +8,12 @@ import type { ChangeCategory } from "./changes-types";
 /**
  * Pane types that can be displayed within a tab
  */
-export type PaneType = "terminal" | "webview" | "file-viewer" | "chat";
+export type PaneType =
+	| "terminal"
+	| "webview"
+	| "file-viewer"
+	| "chat-mastra"
+	| "devtools";
 
 /**
  * Pane status for agent lifecycle indicators
@@ -73,13 +78,12 @@ export function getHighestPriorityStatus(
  * (e.g. clicking a tab, focusing a pane, selecting a workspace).
  *
  * - "review"     → "idle"    (user saw the completion)
- * - "permission" → "working" (user saw the prompt; assume granted)
+ * - "permission" → unchanged (persists until agent resumes)
  * - "working"    → unchanged (persists until agent stops)
  * - "idle"       → unchanged
  */
 export function acknowledgedStatus(status: PaneStatus | undefined): PaneStatus {
 	if (status === "review") return "idle";
-	if (status === "permission") return "working";
 	return status ?? "idle";
 }
 
@@ -127,21 +131,63 @@ export interface Pane {
 	name: string;
 	isNew?: boolean;
 	status?: PaneStatus;
-	initialCommands?: string[];
 	initialCwd?: string;
 	url?: string; // For webview panes
 	cwd?: string | null; // Current working directory
 	cwdConfirmed?: boolean; // True if cwd confirmed via OSC-7, false if seeded
 	fileViewer?: FileViewerState; // For file-viewer panes
-	chat?: ChatPaneState; // For chat panes
+	chatMastra?: ChatMastraPaneState; // For Mastra chat panes
+	browser?: BrowserPaneState; // For browser (webview) panes
+	devtools?: DevToolsPaneState; // For devtools panes
+}
+
+export interface ChatMastraPaneState {
+	sessionId: string | null;
 }
 
 /**
- * Chat pane-specific properties
+ * Single entry in the browser pane's navigation history
  */
-export interface ChatPaneState {
-	/** Session ID for the chat session */
-	sessionId: string;
+export interface BrowserHistoryEntry {
+	url: string;
+	title: string;
+	timestamp: number;
+	faviconUrl?: string;
+}
+
+/**
+ * Named viewport size preset for responsive testing
+ */
+export interface ViewportPreset {
+	name: string;
+	width: number;
+	height: number;
+}
+
+/**
+ * Browser pane-specific properties
+ */
+export interface BrowserLoadError {
+	code: number;
+	description: string;
+	url: string;
+}
+
+export interface BrowserPaneState {
+	currentUrl: string;
+	history: BrowserHistoryEntry[];
+	historyIndex: number;
+	isLoading: boolean;
+	error?: BrowserLoadError | null;
+	viewport?: ViewportPreset | null;
+}
+
+/**
+ * DevTools pane-specific properties
+ */
+export interface DevToolsPaneState {
+	/** The pane ID of the browser pane being inspected */
+	targetPaneId: string;
 }
 
 /**

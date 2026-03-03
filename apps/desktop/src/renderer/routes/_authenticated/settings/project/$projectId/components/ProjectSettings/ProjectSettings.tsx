@@ -12,7 +12,11 @@ import { Switch } from "@superset/ui/switch";
 import { cn } from "@superset/ui/utils";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HiOutlineCog6Tooth, HiOutlinePaintBrush } from "react-icons/hi2";
+import {
+	HiOutlineCog6Tooth,
+	HiOutlineFolderOpen,
+	HiOutlinePaintBrush,
+} from "react-icons/hi2";
 import { LuImagePlus, LuTrash2 } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
@@ -21,10 +25,16 @@ import {
 } from "shared/constants/project-colors";
 import { resolveBranchPrefix, sanitizeSegment } from "shared/utils/branch";
 import { ClickablePath } from "../../../../components/ClickablePath";
+import {
+	useDefaultWorktreePath,
+	WorktreeLocationPicker,
+} from "../../../../components/WorktreeLocationPicker";
 import { BRANCH_PREFIX_MODE_LABELS_WITH_DEFAULT } from "../../../../utils/branch-prefix";
 import { ScriptsEditor } from "./components/ScriptsEditor";
 
-function SettingsSection({
+const REPO_DEFAULT_BASE_BRANCH = "__repo_default__";
+
+export function SettingsSection({
 	icon,
 	title,
 	description,
@@ -60,6 +70,11 @@ export function ProjectSettings({ projectId }: ProjectSettingsProps) {
 	const { data: project } = electronTrpc.projects.get.useQuery({
 		id: projectId,
 	});
+	const { data: branchData, isLoading: isBranchDataLoading } =
+		electronTrpc.projects.getBranches.useQuery(
+			{ projectId },
+			{ enabled: !!projectId },
+		);
 	const { data: gitAuthor } = electronTrpc.projects.getGitAuthor.useQuery({
 		id: projectId,
 	});
@@ -155,6 +170,20 @@ export function ProjectSettings({ projectId }: ProjectSettingsProps) {
 		});
 	};
 
+	const handleWorkspaceBaseBranchChange = (value: string) => {
+		updateProject.mutate({
+			id: projectId,
+			patch: {
+				workspaceBaseBranch: value === REPO_DEFAULT_BASE_BRANCH ? null : value,
+			},
+		});
+	};
+
+	const { data: globalWorktreeBaseDir } =
+		electronTrpc.settings.getWorktreeBaseDir.useQuery();
+	const defaultWorktreePath = useDefaultWorktreePath();
+	const globalPath = globalWorktreeBaseDir ?? defaultWorktreePath;
+
 	const getPreviewPrefix = (
 		mode: BranchPrefixMode | "default",
 	): string | null => {
@@ -182,6 +211,17 @@ export function ProjectSettings({ projectId }: ProjectSettingsProps) {
 
 	const currentMode = project.branchPrefixMode ?? "default";
 	const previewPrefix = getPreviewPrefix(currentMode);
+	const repoDefaultBranch =
+		branchData?.defaultBranch ?? project.defaultBranch ?? "main";
+	const workspaceBaseBranchValue =
+		project.workspaceBaseBranch ?? REPO_DEFAULT_BASE_BRANCH;
+	const workspaceBaseBranchMissing =
+		!isBranchDataLoading &&
+		!!project.workspaceBaseBranch &&
+		!!branchData &&
+		!branchData.branches.some(
+			(branch) => branch.name === project.workspaceBaseBranch,
+		);
 
 	return (
 		<div className="p-6 max-w-4xl w-full select-text">
@@ -242,6 +282,82 @@ export function ProjectSettings({ projectId }: ProjectSettingsProps) {
 							)}
 						</div>
 					</div>
+				</SettingsSection>
+
+				<SettingsSection
+					icon={<HiOutlineCog6Tooth className="h-4 w-4" />}
+					title="Workspace Base Branch"
+					description="Set the default base branch for new workspaces in this repository."
+				>
+					<div className="flex items-center justify-between gap-4">
+						<div className="space-y-0.5">
+							<Label className="text-sm font-medium">Default Base Branch</Label>
+							<p className="text-xs text-muted-foreground">
+								Used when creating a workspace unless you choose a one-off base
+								branch.
+							</p>
+						</div>
+						<Select
+							value={workspaceBaseBranchValue}
+							onValueChange={handleWorkspaceBaseBranchChange}
+							disabled={updateProject.isPending || isBranchDataLoading}
+						>
+							<SelectTrigger className="w-[260px]">
+								{isBranchDataLoading ? (
+									<span className="text-muted-foreground">Loading...</span>
+								) : (
+									<SelectValue />
+								)}
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value={REPO_DEFAULT_BASE_BRANCH}>
+									Use repository default ({repoDefaultBranch})
+								</SelectItem>
+								{workspaceBaseBranchMissing && project.workspaceBaseBranch && (
+									<SelectItem value={project.workspaceBaseBranch}>
+										{project.workspaceBaseBranch} (missing)
+									</SelectItem>
+								)}
+								{(branchData?.branches ?? []).map((branch) => (
+									<SelectItem key={branch.name} value={branch.name}>
+										{branch.name}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+					{workspaceBaseBranchMissing && (
+						<p className="text-xs text-destructive">
+							Branch "{project.workspaceBaseBranch}" no longer exists. New
+							workspaces will fall back to "{repoDefaultBranch}".
+						</p>
+					)}
+				</SettingsSection>
+
+				<SettingsSection
+					icon={<HiOutlineFolderOpen className="h-4 w-4" />}
+					title="Worktree Location"
+					description="Override the global worktree directory for this project."
+				>
+					<WorktreeLocationPicker
+						currentPath={project.worktreeBaseDir}
+						defaultPathLabel={`Using global default: ${globalPath}`}
+						dialogTitle="Select worktree location for this project"
+						defaultBrowsePath={project.worktreeBaseDir ?? globalWorktreeBaseDir}
+						disabled={updateProject.isPending}
+						onSelect={(path) =>
+							updateProject.mutate({
+								id: projectId,
+								patch: { worktreeBaseDir: path },
+							})
+						}
+						onReset={() =>
+							updateProject.mutate({
+								id: projectId,
+								patch: { worktreeBaseDir: null },
+							})
+						}
+					/>
 				</SettingsSection>
 
 				<div className="pt-3 border-t">
