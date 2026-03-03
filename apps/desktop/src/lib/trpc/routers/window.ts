@@ -2,6 +2,11 @@ import fs from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { BrowserWindow, dialog } from "electron";
+import {
+	hasOtherMountedPaneClient,
+	markPaneClientMounted,
+	markPaneClientUnmounted,
+} from "main/lib/pane-presence";
 import { hasOtherLivePaneWindow, openPaneWindow } from "main/windows/pane";
 import { z } from "zod";
 import { publicProcedure, router } from "..";
@@ -56,9 +61,44 @@ export const createWindowRouter = (getWindow: () => BrowserWindow | null) => {
 				const callerWindow = ctx.event
 					? BrowserWindow.fromWebContents(ctx.event.sender)
 					: null;
+				const callerWebContentsId = ctx.event?.sender.id;
+				const hasOtherMountedClient =
+					typeof callerWebContentsId === "number"
+						? hasOtherMountedPaneClient(input.paneId, callerWebContentsId)
+						: false;
 				return {
-					hasLiveWindow: hasOtherLivePaneWindow(input.paneId, callerWindow),
+					hasLiveWindow:
+						hasOtherLivePaneWindow(input.paneId, callerWindow) ||
+						hasOtherMountedClient,
 				};
+			}),
+
+		markPaneMounted: publicProcedure
+			.input(
+				z.object({
+					paneId: z.string().min(1),
+				}),
+			)
+			.mutation(({ ctx, input }) => {
+				const callerWebContentsId = ctx.event?.sender.id;
+				if (typeof callerWebContentsId === "number") {
+					markPaneClientMounted(input.paneId, callerWebContentsId);
+				}
+				return { success: true };
+			}),
+
+		markPaneUnmounted: publicProcedure
+			.input(
+				z.object({
+					paneId: z.string().min(1),
+				}),
+			)
+			.mutation(({ ctx, input }) => {
+				const callerWebContentsId = ctx.event?.sender.id;
+				if (typeof callerWebContentsId === "number") {
+					markPaneClientUnmounted(input.paneId, callerWebContentsId);
+				}
+				return { success: true };
 			}),
 
 		isMaximized: publicProcedure.query(() => {

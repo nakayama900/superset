@@ -3,6 +3,7 @@ import type { BrowserWindow } from "electron";
 import { nativeTheme } from "electron";
 import { createWindow } from "lib/electron-app/factories/windows/create";
 import { attachWindowToIpcHandler } from "main/lib/ipc-handler";
+import { cleanupPanePresenceForWebContents } from "main/lib/pane-presence";
 
 const paneWindows = new Map<string, BrowserWindow>();
 
@@ -83,6 +84,7 @@ export function openPaneWindow({
 		hash: `/pane/${encodeURIComponent(paneId)}`,
 	});
 	attachWindowToIpcHandler(window);
+	const webContentsId = window.webContents.id;
 
 	paneWindows.set(paneId, window);
 
@@ -103,6 +105,9 @@ export function openPaneWindow({
 			}
 		},
 	);
+	window.webContents.on("destroyed", () => {
+		cleanupPanePresenceForWebContents(webContentsId);
+	});
 
 	window.on("closed", () => {
 		paneWindows.delete(paneId);

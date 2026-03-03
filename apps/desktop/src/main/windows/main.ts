@@ -11,6 +11,7 @@ import {
 	setIpcHandler,
 } from "main/lib/ipc-handler";
 import { localDb } from "main/lib/local-db";
+import { cleanupPanePresenceForWebContents } from "main/lib/pane-presence";
 import { NOTIFICATION_EVENTS, PLATFORM } from "shared/constants";
 import {
 	env,
@@ -131,6 +132,7 @@ export async function MainWindow() {
 	registerMenuHotkeyUpdates();
 
 	currentWindow = window;
+	const windowWebContentsId = window.webContents.id;
 
 	// macOS Sequoia+: background throttling can corrupt GPU compositor layers
 	if (PLATFORM.IS_MAC) {
@@ -225,6 +227,10 @@ export async function MainWindow() {
 			window.webContents.invalidate();
 		});
 	}
+
+	window.webContents.on("destroyed", () => {
+		cleanupPanePresenceForWebContents(windowWebContentsId);
+	});
 
 	window.webContents.on("did-finish-load", async () => {
 		console.log("[main-window] Renderer loaded successfully");

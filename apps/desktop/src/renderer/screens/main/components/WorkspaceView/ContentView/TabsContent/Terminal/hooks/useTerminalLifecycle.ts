@@ -216,6 +216,11 @@ export function useTerminalLifecycle({
 	useEffect(() => {
 		const container = terminalRef.current;
 		if (!container) return;
+		void electronTrpcClient.window.markPaneMounted
+			.mutate({ paneId })
+			.catch((error) => {
+				console.warn("[Terminal] Failed to mark pane mounted:", error);
+			});
 
 		if (DEBUG_TERMINAL) {
 			console.log(`[Terminal] Mount: ${paneId}`);
@@ -671,6 +676,11 @@ export function useTerminalLifecycle({
 			unregisterScrollToBottomCallbackRef.current(paneId);
 			unregisterGetSelectionCallbackRef.current(paneId);
 			unregisterPasteCallbackRef.current(paneId);
+			void electronTrpcClient.window.markPaneUnmounted
+				.mutate({ paneId })
+				.catch((error) => {
+					console.warn("[Terminal] Failed to mark pane unmounted:", error);
+				});
 
 			if (isPaneDestroyedInStore()) {
 				// Pane was explicitly destroyed, so kill the session.
