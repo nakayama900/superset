@@ -25,10 +25,6 @@ import {
 	resolveBranchPrefix,
 	sanitizeBranchNameWithMaxLength,
 } from "shared/utils/branch";
-import {
-	deriveWorkspaceBranchFromPrompt,
-	deriveWorkspaceTitleFromPrompt,
-} from "shared/utils/workspace-naming";
 import type { ImportSourceTab } from "./components/ExistingWorktreesList";
 import { ImportFlow } from "./components/ImportFlow";
 import { NewWorkspaceAdvancedOptions } from "./components/NewWorkspaceAdvancedOptions";
@@ -162,7 +158,7 @@ export function NewWorkspaceModal() {
 
 	const branchSlug = branchNameEdited
 		? sanitizeBranchNameWithMaxLength(branchName)
-		: deriveWorkspaceBranchFromPrompt(title);
+		: "";
 
 	const applyPrefix = !branchNameEdited;
 
@@ -311,7 +307,7 @@ export function NewWorkspaceModal() {
 		// Keep the agent prompt uncapped; only trim surrounding whitespace.
 		const prompt = title.trim();
 
-		const workspaceName = deriveWorkspaceTitleFromPrompt(title) || undefined;
+		const workspaceName = undefined;
 		const launchRequestTemplate = buildLaunchRequestForWorkspace(
 			"pending-workspace",
 			prompt,
@@ -435,7 +431,7 @@ export function NewWorkspaceModal() {
 								title={title}
 								onTitleChange={setTitle}
 								titleInputRef={titleInputRef}
-								showBranchPreview={Boolean(title || branchNameEdited)}
+								showBranchPreview={branchNameEdited}
 								branchPreview={branchPreview}
 								effectiveBaseBranch={effectiveBaseBranch}
 								onCreateWorkspace={handleCreateWorkspace}
