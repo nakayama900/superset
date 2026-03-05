@@ -22,6 +22,10 @@ function getShellName(shell: string): string {
 	return shell.split("/").pop() || shell;
 }
 
+function quoteShellLiteral(value: string): string {
+	return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
 function logModeDiagnostics(shellName: string): void {
 	const key = `${shellName}:native`;
 	if (modeDiagnosticsLogged.has(key)) return;
@@ -82,7 +86,7 @@ end`,
 		(name) =>
 			`unalias ${name} 2>/dev/null || true
 ${name}() {
-  _superset_wrapper="${binDir}/${name}"
+  _superset_wrapper=${quoteShellLiteral(`${binDir}/${name}`)}
   if [ -x "$_superset_wrapper" ] && [ ! -d "$_superset_wrapper" ]; then
     "$_superset_wrapper" "$@"
   else
@@ -96,8 +100,8 @@ ${name}() {
 function buildPathPrependFunction(binDir: string): string {
 	return `_superset_prepend_bin() {
   case ":$PATH:" in
-    *:"${binDir}":*) ;;
-    *) export PATH="${binDir}:$PATH" ;;
+    *:${quoteShellLiteral(binDir)}:*) ;;
+    *) export PATH=${quoteShellLiteral(binDir)}:"$PATH" ;;
   esac
 }
 _superset_prepend_bin`;
@@ -113,8 +117,8 @@ function buildZshPrecmdHook(binDir: string): string {
 	return `typeset -ga precmd_functions 2>/dev/null || true
 _superset_ensure_path() {
   case ":$PATH:" in
-    *:"${binDir}":*) ;;
-    *) PATH="${binDir}:$PATH" ;;
+    *:${quoteShellLiteral(binDir)}:*) ;;
+    *) PATH=${quoteShellLiteral(binDir)}:"$PATH" ;;
   esac
 }
 {
@@ -134,6 +138,7 @@ export function createZshWrapper(
 	paths: ShellWrapperPaths = DEFAULT_PATHS,
 ): void {
 	logModeDiagnostics("zsh");
+	const quotedZshDir = quoteShellLiteral(paths.ZSH_DIR);
 
 	// .zshenv is always sourced first by zsh (interactive + non-interactive).
 	// Temporarily restore the user's ZDOTDIR while sourcing user config, then
@@ -143,7 +148,7 @@ export function createZshWrapper(
 _superset_home="\${SUPERSET_ORIG_ZDOTDIR:-$HOME}"
 export ZDOTDIR="$_superset_home"
 [[ -f "$_superset_home/.zshenv" ]] && source "$_superset_home/.zshenv"
-export ZDOTDIR="${paths.ZSH_DIR}"
+export ZDOTDIR=${quotedZshDir}
 `;
 	const wroteZshenv = writeFileIfChanged(zshenvPath, zshenvScript, 0o644);
 
@@ -154,7 +159,7 @@ export ZDOTDIR="${paths.ZSH_DIR}"
 _superset_home="\${SUPERSET_ORIG_ZDOTDIR:-$HOME}"
 export ZDOTDIR="$_superset_home"
 [[ -f "$_superset_home/.zprofile" ]] && source "$_superset_home/.zprofile"
-export ZDOTDIR="${paths.ZSH_DIR}"
+export ZDOTDIR=${quotedZshDir}
 `;
 	const wroteZprofile = writeFileIfChanged(zprofilePath, zprofileScript, 0o644);
 
@@ -168,7 +173,7 @@ ${buildPathPrependFunction(paths.BIN_DIR)}
 ${buildZshPrecmdHook(paths.BIN_DIR)}
 rehash 2>/dev/null || true
 # Restore ZDOTDIR so our .zlogin runs after user's .zlogin
-export ZDOTDIR="${paths.ZSH_DIR}"
+export ZDOTDIR=${quotedZshDir}
 `;
 	const wroteZshrc = writeFileIfChanged(zshrcPath, zshrcScript, 0o644);
 
@@ -288,10 +293,16 @@ export function getCommandShellArgs(
 	const bashRcfile = path.join(paths.BASH_DIR, "rcfile");
 	const commandWithManagedPrelude = `${buildManagedCommandPrelude(shellName, paths.BIN_DIR)}\n${command}`;
 	if (shellName === "zsh" && fs.existsSync(zshRc)) {
-		return ["-lc", `source "${zshRc}" &&\n${commandWithManagedPrelude}`];
+		return [
+			"-lc",
+			`source ${quoteShellLiteral(zshRc)} &&\n${commandWithManagedPrelude}`,
+		];
 	}
 	if (shellName === "bash" && fs.existsSync(bashRcfile)) {
-		return ["-c", `source "${bashRcfile}" &&\n${commandWithManagedPrelude}`];
+		return [
+			"-c",
+			`source ${quoteShellLiteral(bashRcfile)} &&\n${commandWithManagedPrelude}`,
+		];
 	}
 	return ["-lc", commandWithManagedPrelude];
 }
