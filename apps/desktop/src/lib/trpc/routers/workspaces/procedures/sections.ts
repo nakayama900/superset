@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { localDb } from "main/lib/local-db";
 import { z } from "zod";
 import { publicProcedure, router } from "../../..";
+import { computeNextTabOrder, reorderItems } from "../utils/reorder";
 
 export const createSectionsProcedures = () => {
 	return router({
@@ -20,9 +21,8 @@ export const createSectionsProcedures = () => {
 					.where(eq(workspaceSections.projectId, input.projectId))
 					.all();
 
-				const maxTabOrder = existing.reduce(
-					(max, s) => Math.max(max, s.tabOrder),
-					-1,
+				const nextTabOrder = computeNextTabOrder(
+					existing.map((s) => s.tabOrder),
 				);
 
 				const section = localDb
@@ -30,7 +30,7 @@ export const createSectionsProcedures = () => {
 					.values({
 						projectId: input.projectId,
 						name: input.name,
-						tabOrder: maxTabOrder + 1,
+						tabOrder: nextTabOrder,
 					})
 					.returning()
 					.get();
@@ -84,23 +84,13 @@ export const createSectionsProcedures = () => {
 					.all()
 					.sort((a, b) => a.tabOrder - b.tabOrder);
 
-				if (
-					fromIndex < 0 ||
-					fromIndex >= sections.length ||
-					toIndex < 0 ||
-					toIndex >= sections.length
-				) {
-					throw new Error("Invalid fromIndex or toIndex");
-				}
+				reorderItems(sections, fromIndex, toIndex);
 
-				const [removed] = sections.splice(fromIndex, 1);
-				sections.splice(toIndex, 0, removed);
-
-				for (let i = 0; i < sections.length; i++) {
+				for (const section of sections) {
 					localDb
 						.update(workspaceSections)
-						.set({ tabOrder: i })
-						.where(eq(workspaceSections.id, sections[i].id))
+						.set({ tabOrder: section.tabOrder })
+						.where(eq(workspaceSections.id, section.id))
 						.run();
 				}
 
@@ -147,23 +137,13 @@ export const createSectionsProcedures = () => {
 					.all()
 					.sort((a, b) => a.tabOrder - b.tabOrder);
 
-				if (
-					fromIndex < 0 ||
-					fromIndex >= sectionWorkspaces.length ||
-					toIndex < 0 ||
-					toIndex >= sectionWorkspaces.length
-				) {
-					throw new Error("Invalid fromIndex or toIndex");
-				}
+				reorderItems(sectionWorkspaces, fromIndex, toIndex);
 
-				const [removed] = sectionWorkspaces.splice(fromIndex, 1);
-				sectionWorkspaces.splice(toIndex, 0, removed);
-
-				for (let i = 0; i < sectionWorkspaces.length; i++) {
+				for (const ws of sectionWorkspaces) {
 					localDb
 						.update(workspaces)
-						.set({ tabOrder: i })
-						.where(eq(workspaces.id, sectionWorkspaces[i].id))
+						.set({ tabOrder: ws.tabOrder })
+						.where(eq(workspaces.id, ws.id))
 						.run();
 				}
 

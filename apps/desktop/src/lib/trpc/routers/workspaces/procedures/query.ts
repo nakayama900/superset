@@ -10,6 +10,7 @@ import { localDb } from "main/lib/local-db";
 import { z } from "zod";
 import { publicProcedure, router } from "../../..";
 import { getWorkspace } from "../utils/db-helpers";
+import { computeVisualOrder } from "../utils/visual-order";
 import { getWorkspacePath } from "../utils/worktree";
 
 type WorktreePathMap = Map<string, string>;
@@ -20,8 +21,7 @@ function getWorkspacesInVisualOrder(): string[] {
 		.select()
 		.from(projects)
 		.where(isNotNull(projects.tabOrder))
-		.all()
-		.sort((a, b) => (a.tabOrder ?? 0) - (b.tabOrder ?? 0));
+		.all();
 
 	const allWorkspaces = localDb
 		.select()
@@ -31,30 +31,7 @@ function getWorkspacesInVisualOrder(): string[] {
 
 	const allSections = localDb.select().from(workspaceSections).all();
 
-	const orderedIds: string[] = [];
-	for (const project of activeProjects) {
-		const projectWorkspaces = allWorkspaces
-			.filter((w) => w.projectId === project.id)
-			.sort((a, b) => a.tabOrder - b.tabOrder);
-
-		for (const ws of projectWorkspaces.filter((w) => w.sectionId === null)) {
-			orderedIds.push(ws.id);
-		}
-
-		const projectSections = allSections
-			.filter((s) => s.projectId === project.id)
-			.sort((a, b) => a.tabOrder - b.tabOrder);
-
-		for (const section of projectSections) {
-			for (const ws of projectWorkspaces.filter(
-				(w) => w.sectionId === section.id,
-			)) {
-				orderedIds.push(ws.id);
-			}
-		}
-	}
-
-	return orderedIds;
+	return computeVisualOrder(activeProjects, allWorkspaces, allSections);
 }
 
 export const createQueryProcedures = () => {
