@@ -83,6 +83,21 @@ export function withoutActiveTurnAssistantHistory({
 	return [...previousTurns, ...activeTurnNonAssistant];
 }
 
+function hasFileOrImagePart(message: HistoryMessage): boolean {
+	return message.content.some(
+		(part: HistoryMessagePart) =>
+			(part as Record<string, unknown>).type === "file" ||
+			part.type === "image",
+	);
+}
+
+function countFileMessages(messages: ListMessagesOutput): number {
+	return messages.filter(
+		(message: HistoryMessage) =>
+			message.role === "user" && hasFileOrImagePart(message),
+	).length;
+}
+
 export function useMastraChatDisplay(options: UseMastraChatDisplayOptions) {
 	const { sessionId, cwd, enabled = true, fps = 60 } = options;
 	const utils = chatMastraServiceTrpc.useUtils();
@@ -132,6 +147,7 @@ export function useMastraChatDisplay(options: UseMastraChatDisplayOptions) {
 	>(null);
 	const optimisticTextRef = useRef<string | null>(null);
 	const optimisticIdRef = useRef<string | null>(null);
+	const fileMessageCountAtSendRef = useRef<number | null>(null);
 
 	useEffect(() => {
 		if (!optimisticIdRef.current) return;
@@ -149,20 +165,19 @@ export function useMastraChatDisplay(options: UseMastraChatDisplayOptions) {
 								part.text === optimisticText,
 						),
 				)
-			: historicalMessages.some(
-					(message: HistoryMessage) =>
-						message.role === "user" &&
-						message.content.some(
-							(part: HistoryMessagePart) =>
-								(part as Record<string, unknown>).type === "file" ||
-								part.type === "image",
-						),
-				);
+			: (() => {
+					const currentFileMessageCount = countFileMessages(historicalMessages);
+					return (
+						fileMessageCountAtSendRef.current !== null &&
+						currentFileMessageCount > fileMessageCountAtSendRef.current
+					);
+				})();
 		if (!found) return;
 
 		setOptimisticUserMessage(null);
 		optimisticTextRef.current = null;
 		optimisticIdRef.current = null;
+		fileMessageCountAtSendRef.current = null;
 	}, [historicalMessages]);
 
 	const messages = useMemo(() => {
@@ -199,6 +214,10 @@ export function useMastraChatDisplay(options: UseMastraChatDisplayOptions) {
 					const optimisticId = `optimistic-${Date.now()}`;
 					optimisticTextRef.current = text || null;
 					optimisticIdRef.current = optimisticId;
+					if (!text) {
+						fileMessageCountAtSendRef.current =
+							countFileMessages(historicalMessages);
+					}
 					const content: ListMessagesOutput[number]["content"] = [];
 					if (files) {
 						for (const f of files) {
@@ -235,6 +254,7 @@ export function useMastraChatDisplay(options: UseMastraChatDisplayOptions) {
 					setOptimisticUserMessage(null);
 					optimisticTextRef.current = null;
 					optimisticIdRef.current = null;
+					fileMessageCountAtSendRef.current = null;
 					throw error;
 				}
 			},
@@ -304,7 +324,7 @@ export function useMastraChatDisplay(options: UseMastraChatDisplayOptions) {
 				}
 			},
 		}),
-		[cwd, sessionId, utils],
+		[cwd, sessionId, utils, historicalMessages],
 	);
 
 	return {

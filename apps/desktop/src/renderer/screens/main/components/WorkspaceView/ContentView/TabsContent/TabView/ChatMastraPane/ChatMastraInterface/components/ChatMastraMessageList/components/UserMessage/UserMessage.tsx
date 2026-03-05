@@ -1,9 +1,10 @@
 import type { UseMastraChatDisplayReturn } from "@superset/chat-mastra/client";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
-import { CheckIcon, CopyIcon, FileIcon, FileTextIcon } from "lucide-react";
+import { CheckIcon, CopyIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { normalizeWorkspaceFilePath } from "../../../../../../ChatPane/ChatInterface/utils/file-paths";
+import { AttachmentChip } from "../AttachmentChip";
 import { parseUserMentions } from "./utils/parseUserMentions";
 
 type MastraMessage = NonNullable<
@@ -14,40 +15,6 @@ interface UserMessageProps {
 	message: MastraMessage;
 	workspaceId: string;
 	workspaceCwd?: string;
-}
-
-function AttachmentChip({
-	data,
-	mediaType,
-	filename,
-	onClick,
-}: {
-	data: string;
-	mediaType: string;
-	filename?: string;
-	onClick?: () => void;
-}) {
-	const isImage = mediaType.startsWith("image/");
-	const label = filename || (isImage ? "Image" : "Attachment");
-
-	return (
-		<button
-			type="button"
-			className="flex h-8 items-center gap-1.5 rounded-md border border-foreground/20 bg-background/50 px-1.5 text-sm font-medium transition-colors hover:bg-background"
-			onClick={onClick}
-		>
-			<div className="flex size-5 shrink-0 items-center justify-center overflow-hidden rounded bg-background">
-				{isImage && data ? (
-					<img src={data} alt={label} className="size-5 object-cover" />
-				) : mediaType === "application/pdf" ? (
-					<FileIcon className="size-3 text-muted-foreground" />
-				) : (
-					<FileTextIcon className="size-3 text-muted-foreground" />
-				)}
-			</div>
-			<span className="max-w-[200px] truncate">{label}</span>
-		</button>
-	);
 }
 
 export function UserMessage({
@@ -112,9 +79,15 @@ export function UserMessage({
 
 	const handleCopy = useCallback(() => {
 		if (!fullText) return;
-		navigator.clipboard.writeText(fullText);
-		setCopied(true);
-		setTimeout(() => setCopied(false), 1500);
+		navigator.clipboard.writeText(fullText).then(
+			() => {
+				setCopied(true);
+				setTimeout(() => setCopied(false), 1500);
+			},
+			(err) => {
+				console.warn("[UserMessage] clipboard write failed", err);
+			},
+		);
 	}, [fullText]);
 
 	const hasMentions = textParts.some((tp) => {

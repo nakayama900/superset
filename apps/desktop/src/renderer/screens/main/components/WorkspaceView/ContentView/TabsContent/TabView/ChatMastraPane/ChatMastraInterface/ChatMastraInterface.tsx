@@ -812,7 +812,9 @@ export function ChatMastraInterface({
 					sessionId={sessionId}
 					onError={setRuntimeErrorMessage}
 					onSend={(sendPayload) => {
-						void handleSend(sendPayload);
+						void handleSend(sendPayload).catch((error) => {
+							console.debug("[chat-mastra] handleSend error", error);
+						});
 					}}
 					cwd={cwd}
 					isFocused={isFocused}

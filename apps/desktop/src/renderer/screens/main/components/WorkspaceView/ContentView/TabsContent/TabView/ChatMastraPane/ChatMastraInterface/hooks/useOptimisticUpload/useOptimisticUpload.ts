@@ -49,7 +49,6 @@ export function useOptimisticUpload({
 
 			uploadFiles(sessionId, [file])
 				.then(([uploaded]) => {
-					inflightRef.current.delete(file.id);
 					setEntries((prev) => {
 						const next = new Map(prev);
 						next.set(file.id, {
@@ -61,7 +60,6 @@ export function useOptimisticUpload({
 					});
 				})
 				.catch((err: unknown) => {
-					inflightRef.current.delete(file.id);
 					const message = err instanceof Error ? err.message : "Upload failed";
 					setEntries((prev) => {
 						const next = new Map(prev);
@@ -90,7 +88,7 @@ export function useOptimisticUpload({
 			}
 			return changed ? next : prev;
 		});
-	}, [attachmentFiles, sessionId, entries, removeAttachment, onError]);
+	}, [attachmentFiles, sessionId, removeAttachment, onError, entries.has]);
 
 	const getUploadedFiles = useCallback((): {
 		ready: boolean;

@@ -1,7 +1,7 @@
 import type { UseMastraChatDisplayReturn } from "@superset/chat-mastra/client";
 import { Message, MessageContent } from "@superset/ui/ai-elements/message";
 import { ShimmerLabel } from "@superset/ui/ai-elements/shimmer-label";
-import { FileIcon, FileSearchIcon, FileTextIcon } from "lucide-react";
+import { FileSearchIcon } from "lucide-react";
 import { type ReactNode, useCallback } from "react";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { MastraToolCallBlock } from "../../../../../../ChatPane/ChatInterface/components/MastraToolCallBlock";
@@ -9,6 +9,7 @@ import { StreamingMessageText } from "../../../../../../ChatPane/ChatInterface/c
 import { ReasoningBlock } from "../../../../../../ChatPane/ChatInterface/components/ReasoningBlock";
 import type { ToolPart } from "../../../../../../ChatPane/ChatInterface/utils/tool-helpers";
 import { normalizeToolName } from "../../../../../../ChatPane/ChatInterface/utils/tool-helpers";
+import { AttachmentChip } from "../AttachmentChip";
 
 type MastraMessage = NonNullable<
 	UseMastraChatDisplayReturn["messages"]
@@ -26,40 +27,6 @@ interface AssistantMessageProps {
 	workspaceCwd?: string;
 	previewToolParts?: ToolPart[];
 	footer?: ReactNode;
-}
-
-function AttachmentChip({
-	data,
-	mediaType,
-	filename,
-	onClick,
-}: {
-	data: string;
-	mediaType: string;
-	filename?: string;
-	onClick?: () => void;
-}) {
-	const isImage = mediaType.startsWith("image/");
-	const label = filename || (isImage ? "Image" : "Attachment");
-
-	return (
-		<button
-			type="button"
-			className="flex h-8 items-center gap-1.5 rounded-md border border-foreground/20 bg-background/50 px-1.5 text-sm font-medium transition-colors hover:bg-background"
-			onClick={onClick}
-		>
-			<div className="flex size-5 shrink-0 items-center justify-center overflow-hidden rounded bg-background">
-				{isImage && data ? (
-					<img src={data} alt={label} className="size-5 object-cover" />
-				) : mediaType === "application/pdf" ? (
-					<FileIcon className="size-3 text-muted-foreground" />
-				) : (
-					<FileTextIcon className="size-3 text-muted-foreground" />
-				)}
-			</div>
-			<span className="max-w-[200px] truncate">{label}</span>
-		</button>
-	);
 }
 
 function findToolResultForCall({

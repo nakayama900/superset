@@ -71,7 +71,7 @@ export function ChatComposerControls({
 				<PromptInputSubmit
 					className="size-[23px] rounded-full border border-transparent bg-foreground/10 shadow-none p-[5px] hover:bg-foreground/20"
 					status={submitStatus}
-					disabled={submitDisabled}
+					disabled={!canAbort && submitDisabled}
 					onClick={canAbort ? onStop : undefined}
 				>
 					{canAbort ? (
