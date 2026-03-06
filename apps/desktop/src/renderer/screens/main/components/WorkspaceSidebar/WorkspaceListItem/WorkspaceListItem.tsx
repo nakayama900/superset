@@ -104,8 +104,17 @@ export function WorkspaceListItem({
 	const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
 	const contextMenuSelectionRef = useRef<string[]>([]);
 	const rename = useWorkspaceRename(id, name, branch);
-	const tabs = useTabsStore((s) => s.tabs);
-	const panes = useTabsStore((s) => s.panes);
+	const workspaceStatus = useTabsStore((state) => {
+		function* paneStatuses() {
+			for (const tab of state.tabs) {
+				if (tab.workspaceId !== id) continue;
+				for (const paneId of extractPaneIdsFromLayout(tab.layout)) {
+					yield state.panes[paneId]?.status;
+				}
+			}
+		}
+		return getHighestPriorityStatus(paneStatuses());
+	});
 	const clearWorkspaceAttentionStatus = useTabsStore(
 		(s) => s.clearWorkspaceAttentionStatus,
 	);
@@ -214,19 +223,6 @@ export function WorkspaceListItem({
 		if (additions === 0 && deletions === 0) return null;
 		return { additions, deletions };
 	}, [localChanges]);
-
-	const workspaceStatus = useMemo(() => {
-		const workspaceTabs = tabs.filter((t) => t.workspaceId === id);
-		const paneIds = new Set(
-			workspaceTabs.flatMap((t) => extractPaneIdsFromLayout(t.layout)),
-		);
-		function* paneStatuses() {
-			for (const paneId of paneIds) {
-				yield panes[paneId]?.status;
-			}
-		}
-		return getHighestPriorityStatus(paneStatuses());
-	}, [tabs, panes, id]);
 
 	const handleClick = (e?: React.MouseEvent) => {
 		if (rename.isRenaming) return;

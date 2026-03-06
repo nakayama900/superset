@@ -82,8 +82,6 @@ export interface AddFileViewerPaneOptions {
 	isPinned?: boolean;
 	/** If true, opens in a new tab instead of splitting the current tab */
 	openInNewTab?: boolean;
-	/** Override the display name shown in the tab (defaults to filename from filePath) */
-	displayName?: string;
 }
 
 /**
@@ -134,6 +132,7 @@ export interface TabsStore extends TabsState {
 	markPaneAsUsed: (paneId: string) => void;
 	setPaneStatus: (paneId: string, status: PaneStatus) => void;
 	setPaneName: (paneId: string, name: string) => void;
+	setPaneAutoTitle: (paneId: string, title: string) => void;
 	clearWorkspaceAttentionStatus: (workspaceId: string) => void;
 	resetWorkspaceStatus: (workspaceId: string) => void;
 	updatePaneCwd: (
