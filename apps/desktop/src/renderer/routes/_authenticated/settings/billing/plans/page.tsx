@@ -409,10 +409,12 @@ function PlansPage() {
 									const isOnEnterprise = currentPlan === "enterprise";
 
 									let planActions: typeof plan.actions;
-									if (isOnEnterprise && !isCurrent) {
+									if (isOnEnterprise) {
 										planActions = [
 											{
-												label: "Included in Enterprise",
+												label: isCurrent
+													? "Current plan"
+													: "Included in Enterprise",
 												action: "current" as const,
 												variant: "secondary" as const,
 											},

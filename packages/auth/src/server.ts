@@ -601,6 +601,20 @@ export const auth = betterAuth({
 
 					if (!member) return false;
 
+					if (
+						action === "upgrade-subscription" ||
+						action === "cancel-subscription" ||
+						action === "restore-subscription"
+					) {
+						const subscription = await db.query.subscriptions.findFirst({
+							where: and(
+								eq(subscriptions.referenceId, referenceId),
+								eq(subscriptions.status, "active"),
+							),
+						});
+						if (subscription?.plan === "enterprise") return false;
+					}
+
 					switch (action) {
 						case "upgrade-subscription":
 						case "cancel-subscription":
@@ -650,6 +664,8 @@ export const auth = betterAuth({
 					});
 
 					if (!org) return;
+
+					if (plan.name === "enterprise") return;
 
 					const owners = await getOrganizationOwners(subscription.referenceId);
 
