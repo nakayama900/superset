@@ -116,6 +116,7 @@ export function FileViewerPane({
 		isLoadingImage,
 		diffData,
 		isLoadingDiff,
+		refetch: refetchFileContent,
 	} = useFileContent({
 		worktreePath,
 		filePath,
@@ -301,6 +302,7 @@ export function FileViewerPane({
 							onSplitPane={handlers.onSplitPane}
 							onPin={handlePin}
 							onClosePane={handlers.onClosePane}
+							onReload={refetchFileContent}
 						/>
 					</div>
 				)}
