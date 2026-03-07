@@ -39,8 +39,8 @@ export function TopBar() {
 					<div className="pointer-events-auto">
 						<SearchBarTrigger
 							workspaceName={
-								workspace?.project?.name
-									? [workspace.project.name, workspace.name]
+								workspace
+									? [workspace.project?.name, workspace.name]
 											.filter(Boolean)
 											.join(" - ")
 									: undefined
