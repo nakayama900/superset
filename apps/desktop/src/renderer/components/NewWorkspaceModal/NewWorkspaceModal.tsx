@@ -101,11 +101,26 @@ export function NewWorkspaceModal() {
 			</div>
 
 			{isListTab && (
-				<CommandInput placeholder="Search by title, number, or author..." />
+				<CommandInput
+					placeholder={
+						activeTab === "issues"
+							? "Search by slug, title, or description"
+							: activeTab === "branches"
+								? "Search by name"
+								: "Search by title, number, or author"
+					}
+				/>
 			)}
 
 			<CommandList className="!max-h-none flex-1 overflow-y-auto">
-				{activeTab === "pull-requests" && <PullRequestsGroup />}
+				{activeTab === "pull-requests" && (
+						<PullRequestsGroup
+							projectId={selectedProjectId}
+							githubOwner={selectedProject?.githubOwner ?? null}
+							repoName={selectedProject?.name ?? null}
+							onClose={closeModal}
+						/>
+					)}
 				{activeTab === "branches" && <BranchesGroup />}
 				{activeTab === "issues" && (
 						<IssuesGroup

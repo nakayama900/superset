@@ -90,6 +90,7 @@ webhooks.on(
 				.insert(githubRepositories)
 				.values({
 					installationId: installation.id,
+					organizationId: installation.organizationId,
 					repoId: String(repo.id),
 					owner: owner ?? "",
 					name: name ?? repo.name,
@@ -158,6 +159,7 @@ webhooks.on(
 			.insert(githubPullRequests)
 			.values({
 				repositoryId: repo.id,
+				organizationId: repo.organizationId,
 				prNumber: pr.number,
 				nodeId: pr.node_id,
 				headBranch: pr.head.ref,

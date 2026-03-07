@@ -40,7 +40,8 @@ export function IssuesGroup({ projectId, onClose }: IssuesGroupProps) {
 		[collections],
 	);
 
-	const isLinearConnected = false; // TODO: restore — integrations?.some((i) => i.provider === "linear") ?? false;
+	const isLinearConnected =
+		integrations?.some((i) => i.provider === "linear") ?? false;
 
 	const { data } = useLiveQuery(
 		(q) =>

@@ -1,64 +1,139 @@
 import { CommandEmpty, CommandGroup, CommandItem } from "@superset/ui/command";
-import { GoGitPullRequest } from "react-icons/go";
+import { toast } from "@superset/ui/sonner";
+import { and, eq } from "@tanstack/db";
+import { useLiveQuery } from "@tanstack/react-db";
+import { useMemo } from "react";
+import { GoGitPullRequest, GoGitPullRequestDraft } from "react-icons/go";
+import { useCreateFromPr } from "renderer/react-query/workspaces/useCreateFromPr";
+import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 
-const MOCK_PRS = [
-	{
-		number: 197,
-		title: "docs: update root README with contribution guide",
-		author: "satyapatel",
-		url: "https://github.com/org/repo/pull/197",
-		branch: "docs/update-readme",
-	},
-	{
-		number: 196,
-		title: "fix(api/users): make discoverable flag nullable",
-		author: "jsmith",
-		url: "https://github.com/org/repo/pull/196",
-		branch: "fix/discoverable-nullable",
-	},
-	{
-		number: 192,
-		title: "ux(mobile): keep reps and sets visible during rest timer",
-		author: "amelia",
-		url: "https://github.com/org/repo/pull/192",
-		branch: "ux/rest-timer-visibility",
-	},
-	{
-		number: 189,
-		title: "feat(desktop): add keyboard shortcut for quick switcher",
-		author: "satyapatel",
-		url: "https://github.com/org/repo/pull/189",
-		branch: "feat/quick-switcher-shortcut",
-	},
-	{
-		number: 185,
-		title: "chore: bump dependencies to latest stable versions",
-		author: "dependabot",
-		url: "https://github.com/org/repo/pull/185",
-		branch: "chore/bump-deps",
-	},
-];
+interface PullRequestsGroupProps {
+	projectId: string | null;
+	githubOwner: string | null;
+	repoName: string | null;
+	onClose: () => void;
+}
 
-export function PullRequestsGroup() {
+export function PullRequestsGroup({
+	projectId,
+	githubOwner,
+	repoName,
+	onClose,
+}: PullRequestsGroupProps) {
+	const collections = useCollections();
+	const createFromPr = useCreateFromPr();
+
+	// Match GitHub repository by owner + name from the local project
+	const { data: repoData } = useLiveQuery(
+		(q) =>
+			q
+				.from({ repos: collections.githubRepositories })
+				.where(({ repos }) =>
+					and(
+						eq(repos.owner, githubOwner ?? ""),
+						eq(repos.name, repoName ?? ""),
+					),
+				)
+				.select(({ repos }) => ({
+					id: repos.id,
+				})),
+		[collections, githubOwner, repoName],
+	);
+
+	const githubRepositoryId = repoData?.[0]?.id ?? null;
+
+	// Query open PRs for this repository
+	const { data: pullRequests } = useLiveQuery(
+		(q) =>
+			q
+				.from({ prs: collections.githubPullRequests })
+				.where(({ prs }) =>
+					eq(prs.repositoryId, githubRepositoryId ?? ""),
+				)
+				.select(({ prs }) => ({ ...prs })),
+		[collections, githubRepositoryId],
+	);
+
+	const openPrs = useMemo(
+		() =>
+			(pullRequests ?? [])
+				.filter((pr) => pr.state === "open")
+				.slice(0, 30),
+		[pullRequests],
+	);
+
+	if (!projectId) {
+		return (
+			<CommandGroup>
+				<CommandEmpty>Select a project to view pull requests.</CommandEmpty>
+			</CommandGroup>
+		);
+	}
+
+	if (!githubOwner) {
+		return (
+			<CommandGroup>
+				<CommandEmpty>
+					Connect GitHub to view pull requests.
+				</CommandEmpty>
+			</CommandGroup>
+		);
+	}
+
+	if (!githubRepositoryId) {
+		return (
+			<CommandGroup>
+				<CommandEmpty>
+					No GitHub repository found.
+				</CommandEmpty>
+			</CommandGroup>
+		);
+	}
+
 	return (
 		<CommandGroup>
 			<CommandEmpty>No pull requests found.</CommandEmpty>
-			{MOCK_PRS.map((pr) => (
+			{openPrs.map((pr) => (
 				<CommandItem
-					key={pr.number}
-					value={`#${pr.number} ${pr.title} ${pr.author} ${pr.url}`}
+					key={pr.id}
+					value={`#${pr.prNumber} ${pr.title} ${pr.authorLogin} ${pr.url}`}
 					onSelect={() => {
-						console.log("[mock] Create workspace from PR", pr.number);
+						if (!projectId) {
+							toast.error("Select a project first");
+							return;
+						}
+						onClose();
+						toast.promise(
+							createFromPr.mutateAsync({
+								projectId,
+								prUrl: pr.url,
+							}),
+							{
+								loading: "Creating workspace from PR...",
+								success: "Workspace created",
+								error: (err) =>
+									err instanceof Error
+										? err.message
+										: "Failed to create workspace",
+							},
+						);
 					}}
 					className="group"
 				>
-					<GoGitPullRequest className="size-4 shrink-0 text-emerald-500" />
-					<span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-						#{pr.number}
+					{pr.isDraft ? (
+						<GoGitPullRequestDraft className="size-4 shrink-0 text-muted-foreground" />
+					) : (
+						<GoGitPullRequest className="size-4 shrink-0 text-emerald-500" />
+					)}
+					<span
+						className="text-muted-foreground shrink-0 text-xs tabular-nums truncate"
+						style={{ width: "2.8rem" }}
+					>
+						#{pr.prNumber}
 					</span>
 					<span className="truncate flex-1">{pr.title}</span>
 					<span className="text-xs text-muted-foreground shrink-0 group-data-[selected=true]:hidden">
-						{pr.author}
+						{pr.authorLogin}
 					</span>
 					<span className="text-xs text-muted-foreground shrink-0 hidden group-data-[selected=true]:inline">
 						Open →
