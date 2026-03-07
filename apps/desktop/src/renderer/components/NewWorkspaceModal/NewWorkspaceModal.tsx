@@ -76,7 +76,7 @@ export function NewWorkspaceModal() {
 			title="New Workspace"
 			description="Create a new workspace from a PR, branch, issue, or prompt."
 			showCloseButton={false}
-			className="sm:max-w-[540px] max-h-[min(70vh,600px)] !top-[calc(50%-min(35vh,300px))] !-translate-y-0 flex flex-col"
+			className="sm:max-w-[560px] max-h-[min(70vh,600px)] !top-[calc(50%-min(35vh,300px))] !-translate-y-0 flex flex-col"
 		>
 			<div className="flex items-center justify-between border-b px-3 py-2">
 				<Tabs

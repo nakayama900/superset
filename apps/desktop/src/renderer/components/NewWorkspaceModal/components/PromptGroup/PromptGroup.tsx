@@ -25,6 +25,7 @@ import {
 	useIsDarkTheme,
 } from "renderer/assets/app-icons/preset-icons";
 import { useCreateWorkspace } from "renderer/react-query/workspaces";
+import { useHotkeysStore } from "renderer/stores/hotkeys/store";
 
 type WorkspaceCreateAgent = StartableAgentType | "none";
 
@@ -36,6 +37,8 @@ interface PromptGroupProps {
 }
 
 export function PromptGroup({ projectId, onClose }: PromptGroupProps) {
+	const platform = useHotkeysStore((state) => state.platform);
+	const modKey = platform === "darwin" ? "⌘" : "Ctrl";
 	const isDark = useIsDarkTheme();
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const [prompt, setPrompt] = useState("");
@@ -180,7 +183,7 @@ export function PromptGroup({ projectId, onClose }: PromptGroupProps) {
 				Create Workspace
 				<KbdGroup className="ml-1.5 opacity-70">
 					<Kbd className="bg-primary-foreground/15 text-primary-foreground h-4 min-w-4 text-[10px]">
-						⌘
+						{modKey}
 					</Kbd>
 					<Kbd className="bg-primary-foreground/15 text-primary-foreground h-4 min-w-4 text-[10px]">
 						↵

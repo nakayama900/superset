@@ -7,6 +7,7 @@ import { GoArrowUpRight, GoGitBranch, GoGlobe } from "react-icons/go";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useCreateBranchWorkspace } from "renderer/react-query/workspaces";
 import { navigateToWorkspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
+import { useHotkeysStore } from "renderer/stores/hotkeys/store";
 
 interface BranchesGroupProps {
 	projectId: string | null;
@@ -14,6 +15,8 @@ interface BranchesGroupProps {
 }
 
 export function BranchesGroup({ projectId, onClose }: BranchesGroupProps) {
+	const platform = useHotkeysStore((state) => state.platform);
+	const modKey = platform === "darwin" ? "⌘" : "Ctrl";
 	const navigate = useNavigate();
 	const createBranchWorkspace = useCreateBranchWorkspace();
 
@@ -137,7 +140,7 @@ export function BranchesGroup({ projectId, onClose }: BranchesGroupProps) {
 										handleCreate(branch.name);
 									}}
 								>
-									Duplicate branch ⌘↵
+									Duplicate branch {modKey}↵
 								</Button>
 							</span>
 						) : (
