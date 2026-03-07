@@ -1,9 +1,13 @@
+import { Button } from "@superset/ui/button";
 import { CommandEmpty, CommandGroup, CommandItem } from "@superset/ui/command";
 import { toast } from "@superset/ui/sonner";
 import { and, eq } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
+import { useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { GoGitPullRequest, GoGitPullRequestDraft } from "react-icons/go";
+import { SiGithub } from "react-icons/si";
+import { GATED_FEATURES, usePaywall } from "renderer/components/Paywall";
 import { useCreateFromPr } from "renderer/react-query/workspaces/useCreateFromPr";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 
@@ -21,6 +25,8 @@ export function PullRequestsGroup({
 	onClose,
 }: PullRequestsGroupProps) {
 	const collections = useCollections();
+	const navigate = useNavigate();
+	const { gateFeature } = usePaywall();
 	const createFromPr = useCreateFromPr();
 
 	// Match GitHub repository by owner + name from the local project
@@ -72,11 +78,27 @@ export function PullRequestsGroup({
 
 	if (!githubOwner) {
 		return (
-			<CommandGroup>
-				<CommandEmpty>
-					Connect GitHub to view pull requests.
-				</CommandEmpty>
-			</CommandGroup>
+			<div className="flex flex-col items-center gap-3 py-8 px-4 text-center">
+				<SiGithub className="size-6 text-muted-foreground" />
+				<div className="space-y-1">
+					<p className="text-sm font-medium">Connect GitHub</p>
+					<p className="text-xs text-muted-foreground">
+						Sync pull requests from GitHub to create workspaces
+					</p>
+				</div>
+				<Button
+					size="sm"
+					variant="outline"
+					onClick={() => {
+						gateFeature(GATED_FEATURES.INTEGRATIONS, () => {
+							onClose();
+							navigate({ to: "/settings/integrations" });
+						});
+					}}
+				>
+					Connect
+				</Button>
+			</div>
 		);
 	}
 

@@ -121,7 +121,12 @@ export function NewWorkspaceModal() {
 							onClose={closeModal}
 						/>
 					)}
-				{activeTab === "branches" && <BranchesGroup />}
+				{activeTab === "branches" && (
+						<BranchesGroup
+							projectId={selectedProjectId}
+							onClose={closeModal}
+						/>
+					)}
 				{activeTab === "issues" && (
 						<IssuesGroup
 							projectId={selectedProjectId}
