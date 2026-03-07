@@ -1,4 +1,9 @@
 import {
+	AGENT_PRESET_COMMANDS,
+	buildAgentPromptCommand,
+} from "@superset/shared/agent-command";
+import {
+	type AgentLaunchRequest,
 	STARTABLE_AGENT_LABELS,
 	STARTABLE_AGENT_TYPES,
 	type StartableAgentType,
@@ -12,21 +17,29 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@superset/ui/select";
+import { toast } from "@superset/ui/sonner";
 import { Textarea } from "@superset/ui/textarea";
 import { useRef, useState } from "react";
 import {
 	getPresetIcon,
 	useIsDarkTheme,
 } from "renderer/assets/app-icons/preset-icons";
+import { useCreateWorkspace } from "renderer/react-query/workspaces";
 
 type WorkspaceCreateAgent = StartableAgentType | "none";
 
 const AGENT_STORAGE_KEY = "lastSelectedWorkspaceCreateAgent";
 
-export function PromptGroup() {
+interface PromptGroupProps {
+	projectId: string | null;
+	onClose: () => void;
+}
+
+export function PromptGroup({ projectId, onClose }: PromptGroupProps) {
 	const isDark = useIsDarkTheme();
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const [prompt, setPrompt] = useState("");
+	const createWorkspace = useCreateWorkspace();
 	const [selectedAgent, setSelectedAgent] = useState<WorkspaceCreateAgent>(
 		() => {
 			if (typeof window === "undefined") return "none";
@@ -42,6 +55,73 @@ export function PromptGroup() {
 	const handleAgentChange = (value: WorkspaceCreateAgent) => {
 		setSelectedAgent(value);
 		window.localStorage.setItem(AGENT_STORAGE_KEY, value);
+	};
+
+	const buildLaunchRequest = (
+		trimmedPrompt: string,
+	): AgentLaunchRequest | null => {
+		if (selectedAgent === "none") return null;
+
+		if (selectedAgent === "superset-chat") {
+			return {
+				kind: "chat",
+				workspaceId: "pending-workspace",
+				agentType: "superset-chat",
+				source: "new-workspace",
+				chat: {
+					initialPrompt: trimmedPrompt || undefined,
+				},
+			};
+		}
+
+		const command = trimmedPrompt
+			? buildAgentPromptCommand({
+					prompt: trimmedPrompt,
+					randomId: window.crypto.randomUUID(),
+					agent: selectedAgent,
+				})
+			: (AGENT_PRESET_COMMANDS[selectedAgent][0] ?? null);
+
+		if (!command) return null;
+
+		return {
+			kind: "terminal",
+			workspaceId: "pending-workspace",
+			agentType: selectedAgent,
+			source: "new-workspace",
+			terminal: {
+				command,
+				name: "Agent",
+			},
+		};
+	};
+
+	const handleCreate = () => {
+		if (!projectId) {
+			toast.error("Select a project first");
+			return;
+		}
+		const trimmedPrompt = prompt.trim();
+		const launchRequest = buildLaunchRequest(trimmedPrompt);
+
+		onClose();
+		toast.promise(
+			createWorkspace.mutateAsyncWithPendingSetup(
+				{
+					projectId,
+					prompt: trimmedPrompt || undefined,
+				},
+				launchRequest
+					? { agentLaunchRequest: launchRequest }
+					: undefined,
+			),
+			{
+				loading: "Creating workspace...",
+				success: "Workspace created",
+				error: (err) =>
+					err instanceof Error ? err.message : "Failed to create workspace",
+			},
+		);
 	};
 
 	return (
@@ -67,10 +147,10 @@ export function PromptGroup() {
 											<img
 												src={icon}
 												alt=""
-												className="size-3.5 object-contain"
+												className="size-5 object-contain"
 											/>
 										)}
-										{STARTABLE_AGENT_LABELS[agent]}
+										{agent === "superset-chat" ? "Superset" : STARTABLE_AGENT_LABELS[agent]}
 									</span>
 								</SelectItem>
 							);
@@ -81,17 +161,21 @@ export function PromptGroup() {
 
 			<Textarea
 				ref={textareaRef}
-				className="min-h-24 text-sm resize-y field-sizing-fixed"
+				className="min-h-24 max-h-48 text-sm resize-y field-sizing-fixed"
 				placeholder="What do you want to do?"
 				value={prompt}
 				onChange={(e) => setPrompt(e.target.value)}
+				onKeyDown={(e) => {
+					if (e.key === "Enter" && e.metaKey) {
+						e.preventDefault();
+						handleCreate();
+					}
+				}}
 			/>
 
 			<Button
 				className="w-full h-8 text-sm"
-				onClick={() => {
-					console.log("[mock] Create workspace with prompt:", prompt);
-				}}
+				onClick={handleCreate}
 			>
 				Create Workspace
 				<KbdGroup className="ml-1.5 opacity-70">
