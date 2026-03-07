@@ -2,12 +2,15 @@ import type { UseMastraChatDisplayReturn } from "@superset/chat-mastra/client";
 import { Message, MessageContent } from "@superset/ui/ai-elements/message";
 import { ShimmerLabel } from "@superset/ui/ai-elements/shimmer-label";
 import { FileSearchIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useCallback } from "react";
+import { useTabsStore } from "renderer/stores/tabs/store";
 import { MastraToolCallBlock } from "../../../../../../ChatPane/ChatInterface/components/MastraToolCallBlock";
 import { StreamingMessageText } from "../../../../../../ChatPane/ChatInterface/components/MessagePartsRenderer/components/StreamingMessageText";
 import { ReasoningBlock } from "../../../../../../ChatPane/ChatInterface/components/ReasoningBlock";
 import type { ToolPart } from "../../../../../../ChatPane/ChatInterface/utils/tool-helpers";
 import { normalizeToolName } from "../../../../../../ChatPane/ChatInterface/utils/tool-helpers";
+import { AttachmentChip } from "../AttachmentChip";
+import { PendingPlanApprovalMessage } from "../PendingPlanApprovalMessage";
 
 type MastraMessage = NonNullable<
 	UseMastraChatDisplayReturn["messages"]
@@ -15,6 +18,8 @@ type MastraMessage = NonNullable<
 type MastraMessageContent = MastraMessage["content"][number];
 type MastraToolCall = Extract<MastraMessageContent, { type: "tool_call" }>;
 type MastraToolResult = Extract<MastraMessageContent, { type: "tool_result" }>;
+type MastraPendingPlanApproval =
+	UseMastraChatDisplayReturn["pendingPlanApproval"];
 
 interface AssistantMessageProps {
 	message: MastraMessage;
@@ -25,6 +30,13 @@ interface AssistantMessageProps {
 	workspaceCwd?: string;
 	previewToolParts?: ToolPart[];
 	footer?: ReactNode;
+	pendingPlanApproval?: MastraPendingPlanApproval;
+	pendingPlanToolCallId?: string | null;
+	isPlanSubmitting?: boolean;
+	onPlanRespond?: (response: {
+		action: "approved" | "rejected";
+		feedback?: string;
+	}) => Promise<void>;
 }
 
 function ImagePart({ data, mimeType }: { data: string; mimeType: string }) {
@@ -98,9 +110,49 @@ export function AssistantMessage({
 	workspaceCwd,
 	previewToolParts = [],
 	footer,
+	pendingPlanApproval,
+	pendingPlanToolCallId = null,
+	isPlanSubmitting = false,
+	onPlanRespond,
 }: AssistantMessageProps) {
+	const addFileViewerPane = useTabsStore((store) => store.addFileViewerPane);
 	const nodes: ReactNode[] = [];
 	const renderedToolCallIds = new Set<string>();
+	let didRenderPendingPlanApproval = false;
+	const handleAttachmentClick = useCallback(
+		(url: string, filename?: string) => {
+			addFileViewerPane(workspaceId, {
+				filePath: url,
+				isPinned: true,
+				...(filename ? { displayName: filename } : {}),
+			});
+		},
+		[addFileViewerPane, workspaceId],
+	);
+	const getInlineToolStateNodes = (toolCallId: string): ReactNode[] => {
+		const inlineNodes: ReactNode[] = [];
+
+		if (
+			!didRenderPendingPlanApproval &&
+			pendingPlanApproval &&
+			pendingPlanToolCallId &&
+			pendingPlanToolCallId === toolCallId &&
+			onPlanRespond
+		) {
+			didRenderPendingPlanApproval = true;
+			inlineNodes.push(
+				<PendingPlanApprovalMessage
+					key={`${message.id}-pending-plan-${toolCallId}`}
+					planApproval={pendingPlanApproval}
+					isSubmitting={isPlanSubmitting}
+					onRespond={onPlanRespond}
+					inline
+				/>,
+			);
+		}
+
+		return inlineNodes;
+	};
 	for (let partIndex = 0; partIndex < message.content.length; partIndex++) {
 		const part = message.content[partIndex];
 
@@ -130,12 +182,62 @@ export function AssistantMessage({
 			continue;
 		}
 
-		if (part.type === "image") {
-			nodes.push(
-				<div key={`${message.id}-${partIndex}`} className="max-w-[85%]">
-					<ImagePart data={part.data} mimeType={part.mimeType} />
-				</div>,
-			);
+		const rawPart = part as {
+			data?: string;
+			filename?: string;
+			image?: string;
+			mediaType?: string;
+			mimeType?: string;
+			type?: string;
+		};
+		if (part.type === "image" || rawPart.type === "file") {
+			const mediaType =
+				rawPart.mediaType ?? rawPart.mimeType ?? "application/octet-stream";
+			const data = rawPart.data ?? rawPart.image ?? "";
+			if (!data) {
+				continue;
+			}
+
+			if (part.type === "image" && "mimeType" in part && !rawPart.mediaType) {
+				nodes.push(
+					<div key={`${message.id}-${partIndex}`} className="max-w-[85%]">
+						<ImagePart data={part.data} mimeType={part.mimeType} />
+					</div>,
+				);
+				continue;
+			}
+
+			if (mediaType.startsWith("image/")) {
+				nodes.push(
+					<button
+						type="button"
+						key={`${message.id}-${partIndex}`}
+						className="max-w-[85%] cursor-pointer"
+						aria-label={
+							rawPart.filename
+								? `View ${rawPart.filename}`
+								: "View generated image"
+						}
+						onClick={() => handleAttachmentClick(data, rawPart.filename)}
+					>
+						<img
+							src={data}
+							alt={rawPart.filename ?? "Generated"}
+							className="max-h-48 rounded-lg object-contain"
+						/>
+					</button>,
+				);
+			} else {
+				nodes.push(
+					<AttachmentChip
+						key={`${message.id}-${partIndex}`}
+						data={data}
+						filename={rawPart.filename}
+						mediaType={mediaType}
+						onClick={() => handleAttachmentClick(data, rawPart.filename)}
+					/>,
+				);
+			}
 			continue;
 		}
 
@@ -164,6 +266,7 @@ export function AssistantMessage({
 					workspaceCwd={workspaceCwd}
 				/>,
 			);
+			nodes.push(...getInlineToolStateNodes(part.id));
 
 			if (resultIndex === partIndex + 1) {
 				partIndex++;
@@ -186,6 +289,7 @@ export function AssistantMessage({
 					workspaceCwd={workspaceCwd}
 				/>,
 			);
+			nodes.push(...getInlineToolStateNodes(part.id));
 			continue;
 		}
 
@@ -214,6 +318,7 @@ export function AssistantMessage({
 				workspaceCwd={workspaceCwd}
 			/>,
 		);
+		nodes.push(...getInlineToolStateNodes(previewPart.toolCallId));
 	}
 
 	return (

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { killTerminalForPane } from "renderer/stores/tabs/utils/terminal-cleanup";
 import { scheduleTerminalAttach } from "../attach-scheduler";
-import { sanitizeForTitle } from "../commandBuffer";
+import { isCommandEchoed, sanitizeForTitle } from "../commandBuffer";
 import { DEBUG_TERMINAL, FIRST_RENDER_RESTORE_FALLBACK_MS } from "../config";
 import {
 	createTerminalInstance,
@@ -326,9 +326,12 @@ export function useTerminalLifecycle({
 			const { domEvent } = event;
 			if (domEvent.key === "Enter") {
 				if (!isAlternateScreenRef.current) {
-					const title = sanitizeForTitle(commandBufferRef.current);
-					if (title) {
-						setPaneNameRef.current(paneId, title);
+					const buffer = commandBufferRef.current;
+					if (isCommandEchoed(xterm, buffer)) {
+						const title = sanitizeForTitle(buffer);
+						if (title) {
+							setPaneNameRef.current(paneId, title);
+						}
 					}
 				}
 				commandBufferRef.current = "";
@@ -590,8 +593,17 @@ export function useTerminalLifecycle({
 				reattachRecovery.pendingFrame = null;
 
 				const now = Date.now();
-				if (now - reattachRecovery.lastRunAt < reattachRecovery.throttleMs)
+				if (now - reattachRecovery.lastRunAt < reattachRecovery.throttleMs) {
+					// Schedule a retry after the remaining throttle window so the recovery
+					// is not permanently lost when focus events fire in rapid succession.
+					const remaining =
+						reattachRecovery.throttleMs - (now - reattachRecovery.lastRunAt);
+					setTimeout(() => {
+						if (!isUnmounted)
+							scheduleReattachRecovery(reattachRecovery.pendingForceResize);
+					}, remaining + 1);
 					return;
+				}
 				reattachRecovery.lastRunAt = now;
 
 				const shouldForceResize = reattachRecovery.pendingForceResize;
