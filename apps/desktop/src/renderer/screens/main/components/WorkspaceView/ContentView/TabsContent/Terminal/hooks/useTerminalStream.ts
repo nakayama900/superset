@@ -48,6 +48,11 @@ export function useTerminalStream({
 	const setPaneStatus = useTabsStore((s) => s.setPaneStatus);
 	const firstStreamDataReceivedRef = useRef(false);
 
+	// Write coalescing: accumulate data chunks within a single animation frame
+	// and flush them as one xterm.write() call to reduce renderer overhead.
+	const pendingWriteChunksRef = useRef<string[]>([]);
+	const rafScheduledRef = useRef(false);
+
 	// Refs to use latest values in callbacks
 	const updateModesRef = useRef(updateModesFromData);
 	updateModesRef.current = updateModesFromData;
@@ -157,8 +162,20 @@ export function useTerminalStream({
 				}
 
 				updateModesRef.current(event.data);
-				xterm.write(event.data);
 				updateCwdRef.current(event.data);
+
+				// Coalesce writes within a single animation frame to reduce xterm
+				// parser overhead when many IPC messages arrive between frames.
+				pendingWriteChunksRef.current.push(event.data);
+				if (!rafScheduledRef.current) {
+					rafScheduledRef.current = true;
+					requestAnimationFrame(() => {
+						const batch = pendingWriteChunksRef.current.join("");
+						pendingWriteChunksRef.current = [];
+						rafScheduledRef.current = false;
+						xtermRef.current?.write(batch);
+					});
+				}
 			} else if (event.type === "exit") {
 				handleTerminalExit(event.exitCode, xterm, event.reason);
 			} else if (event.type === "disconnect") {
