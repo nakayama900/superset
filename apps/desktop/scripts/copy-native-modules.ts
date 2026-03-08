@@ -13,6 +13,7 @@
  * This is safe because bun install will recreate the symlinks on next install.
  */
 
+import { execSync } from "node:child_process";
 import {
 	cpSync,
 	existsSync,
@@ -23,7 +24,6 @@ import {
 	realpathSync,
 	rmSync,
 } from "node:fs";
-import { execSync } from "node:child_process";
 import { dirname, join } from "node:path";
 
 // Target architecture for cross-compilation. When set, platform-specific
@@ -137,13 +137,18 @@ function fetchNpmPackage(
 	console.log(`  ${packageName}: fetching from npm (${version})`);
 	try {
 		mkdirSync(destPath, { recursive: true });
-		execSync(`curl -sL "${url}" | tar xz -C "${destPath}" --strip-components=1`, {
-			stdio: "pipe",
-		});
+		execSync(
+			`curl -sL "${url}" | tar xz -C "${destPath}" --strip-components=1`,
+			{
+				stdio: "pipe",
+			},
+		);
 		console.log(`    Extracted to: ${destPath}`);
 		return true;
 	} catch (err) {
-		console.error(`  [ERROR] Failed to fetch ${packageName}@${version}: ${err}`);
+		console.error(
+			`  [ERROR] Failed to fetch ${packageName}@${version}: ${err}`,
+		);
 		return false;
 	}
 }
@@ -289,7 +294,9 @@ function copyLibsqlDependencies(nodeModulesDir: string): void {
 
 function prepareNativeModules() {
 	console.log("Preparing native modules for electron-builder...");
-	console.log(`  Target: ${TARGET_PLATFORM}/${TARGET_ARCH} (host: ${process.platform}/${process.arch})`);
+	console.log(
+		`  Target: ${TARGET_PLATFORM}/${TARGET_ARCH} (host: ${process.platform}/${process.arch})`,
+	);
 
 	// bun creates symlinks for direct dependencies in the workspace's node_modules
 	const nodeModulesDir = join(dirname(import.meta.dirname), "node_modules");
