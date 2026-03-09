@@ -28,7 +28,7 @@ async function writeTaskFile(
 	workspacePath: string,
 	fileName: string,
 	content: string,
-): Promise<string> {
+): Promise<void> {
 	const baseName = path.basename(fileName);
 	if (!baseName || baseName !== fileName || fileName.includes("..")) {
 		throw new Error(`Invalid task file name: ${fileName}`);
@@ -36,34 +36,7 @@ async function writeTaskFile(
 
 	const dir = path.join(workspacePath, ".superset");
 	await mkdir(dir, { recursive: true });
-
-	const ext = path.extname(baseName);
-	const base = path.basename(baseName, ext);
-	let finalName = baseName;
-	let attempt = 0;
-
-	while (attempt < 100) {
-		try {
-			await writeFile(path.join(dir, finalName), content, {
-				encoding: "utf-8",
-				flag: "wx",
-			});
-			return finalName;
-		} catch (err: unknown) {
-			if (
-				err instanceof Error &&
-				"code" in err &&
-				(err as NodeJS.ErrnoException).code === "EEXIST"
-			) {
-				attempt++;
-				finalName = `${base}-${attempt}${ext}`;
-				continue;
-			}
-			throw err;
-		}
-	}
-
-	throw new Error(`Could not write task file after ${attempt} attempts`);
+	await writeFile(path.join(dir, baseName), content, { encoding: "utf-8" });
 }
 
 const SAFE_ID = z

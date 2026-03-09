@@ -97,13 +97,13 @@ function buildHeredoc(
 
 const AGENT_FILE_COMMANDS: Record<AgentType, (filePath: string) => string> = {
 	claude: (filePath) =>
-		`claude --dangerously-skip-permissions "$(cat ${filePath})"`,
+		`claude --dangerously-skip-permissions "$(cat '${filePath}')"`,
 	codex: (filePath) =>
-		`codex -c model_reasoning_effort="high" --dangerously-bypass-approvals-and-sandbox -c model_reasoning_summary="detailed" -c model_supports_reasoning_summaries=true -- "$(cat ${filePath})"`,
-	gemini: (filePath) => `gemini --yolo "$(cat ${filePath})"`,
-	opencode: (filePath) => `opencode --prompt "$(cat ${filePath})"`,
-	copilot: (filePath) => `copilot -i "$(cat ${filePath})" --yolo`,
-	"cursor-agent": (filePath) => `cursor-agent --yolo "$(cat ${filePath})"`,
+		`codex -c model_reasoning_effort="high" --dangerously-bypass-approvals-and-sandbox -c model_reasoning_summary="detailed" -c model_supports_reasoning_summaries=true -- "$(cat '${filePath}')"`,
+	gemini: (filePath) => `gemini --yolo "$(cat '${filePath}')"`,
+	opencode: (filePath) => `opencode --prompt "$(cat '${filePath}')"`,
+	copilot: (filePath) => `copilot -i "$(cat '${filePath}')" --yolo`,
+	"cursor-agent": (filePath) => `cursor-agent --yolo "$(cat '${filePath}')"`,
 };
 
 export function buildAgentFileCommand({

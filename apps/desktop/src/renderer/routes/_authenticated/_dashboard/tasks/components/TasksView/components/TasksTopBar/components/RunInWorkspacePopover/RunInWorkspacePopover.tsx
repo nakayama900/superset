@@ -232,7 +232,11 @@ export function RunInWorkspacePopover({
 					return next;
 				});
 				successCount++;
-			} catch {
+			} catch (err) {
+				console.error(
+					`[RunInWorkspacePopover] Failed to create workspace for task ${task.slug}:`,
+					err,
+				);
 				setTaskStatuses((prev) => {
 					const next = new Map(prev);
 					next.set(task.id, "failed");
