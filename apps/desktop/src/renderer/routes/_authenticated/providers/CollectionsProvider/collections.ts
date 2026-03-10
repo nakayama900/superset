@@ -15,6 +15,11 @@ import type {
 	SelectTask,
 	SelectTaskStatus,
 	SelectUser,
+	SelectV2Device,
+	SelectV2DevicePresence,
+	SelectV2Project,
+	SelectV2UsersDevices,
+	SelectV2Workspace,
 	SelectWorkspace,
 } from "@superset/db/schema";
 import type { AppRouter } from "@superset/trpc";
@@ -50,6 +55,11 @@ interface OrgCollections {
 	tasks: Collection<SelectTask>;
 	taskStatuses: Collection<SelectTaskStatus>;
 	projects: Collection<SelectProject>;
+	v2Devices: Collection<SelectV2Device>;
+	v2DevicePresence: Collection<SelectV2DevicePresence>;
+	v2Projects: Collection<SelectV2Project>;
+	v2UsersDevices: Collection<SelectV2UsersDevices>;
+	v2Workspaces: Collection<SelectV2Workspace>;
 	workspaces: Collection<SelectWorkspace>;
 	members: Collection<SelectMember>;
 	users: Collection<SelectUser>;
@@ -160,6 +170,86 @@ function createOrgCollections(organizationId: string): OrgCollections {
 				url: electricUrl,
 				params: {
 					table: "projects",
+					organizationId,
+				},
+				headers: electricHeaders,
+				columnMapper,
+			},
+			getKey: (item) => item.id,
+		}),
+	);
+
+	const v2Projects = createCollection(
+		electricCollectionOptions<SelectV2Project>({
+			id: `v2_projects-${organizationId}`,
+			shapeOptions: {
+				url: electricUrl,
+				params: {
+					table: "v2_projects",
+					organizationId,
+				},
+				headers: electricHeaders,
+				columnMapper,
+			},
+			getKey: (item) => item.id,
+		}),
+	);
+
+	const v2Devices = createCollection(
+		electricCollectionOptions<SelectV2Device>({
+			id: `v2_devices-${organizationId}`,
+			shapeOptions: {
+				url: electricUrl,
+				params: {
+					table: "v2_devices",
+					organizationId,
+				},
+				headers: electricHeaders,
+				columnMapper,
+			},
+			getKey: (item) => item.id,
+		}),
+	);
+
+	const v2DevicePresence = createCollection(
+		electricCollectionOptions<SelectV2DevicePresence>({
+			id: `v2_device_presence-${organizationId}`,
+			shapeOptions: {
+				url: electricUrl,
+				params: {
+					table: "v2_device_presence",
+					organizationId,
+				},
+				headers: electricHeaders,
+				columnMapper,
+			},
+			getKey: (item) => item.deviceId,
+		}),
+	);
+
+	const v2UsersDevices = createCollection(
+		electricCollectionOptions<SelectV2UsersDevices>({
+			id: `v2_users_devices-${organizationId}`,
+			shapeOptions: {
+				url: electricUrl,
+				params: {
+					table: "v2_users_devices",
+					organizationId,
+				},
+				headers: electricHeaders,
+				columnMapper,
+			},
+			getKey: (item) => item.id,
+		}),
+	);
+
+	const v2Workspaces = createCollection(
+		electricCollectionOptions<SelectV2Workspace>({
+			id: `v2_workspaces-${organizationId}`,
+			shapeOptions: {
+				url: electricUrl,
+				params: {
+					table: "v2_workspaces",
 					organizationId,
 				},
 				headers: electricHeaders,
@@ -389,6 +479,11 @@ function createOrgCollections(organizationId: string): OrgCollections {
 		tasks,
 		taskStatuses,
 		projects,
+		v2Devices,
+		v2DevicePresence,
+		v2Projects,
+		v2UsersDevices,
+		v2Workspaces,
 		workspaces,
 		members,
 		users,
