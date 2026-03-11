@@ -45,7 +45,7 @@ export const v2Devices = pgTable(
 			.notNull()
 			.references(() => organizations.id, { onDelete: "cascade" }),
 		name: text().notNull(),
-		type: text().notNull(), // "host" | "cloud" | "viewer"
+		type: text().notNull(),
 		hashedDeviceId: text("hashed_device_id").notNull(),
 		createdAt: timestamp("created_at").notNull().defaultNow(),
 		updatedAt: timestamp("updated_at")

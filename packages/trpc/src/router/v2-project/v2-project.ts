@@ -1,5 +1,5 @@
 import { dbWs } from "@superset/db/client";
-import { v2Projects } from "@superset/db/schema";
+import { githubRepositories, v2Projects } from "@superset/db/schema";
 import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
@@ -56,6 +56,22 @@ export const v2ProjectRouter = {
 				});
 			}
 			await verifyOrgMembership(ctx.session.user.id, organizationId);
+
+			if (input.githubRepositoryId) {
+				const repo = await dbWs.query.githubRepositories.findFirst({
+					where: and(
+						eq(githubRepositories.id, input.githubRepositoryId),
+						eq(githubRepositories.organizationId, organizationId),
+					),
+				});
+				if (!repo) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "GitHub repository not found in this organization",
+					});
+				}
+			}
+
 			const [project] = await dbWs
 				.insert(v2Projects)
 				.values({
@@ -92,6 +108,22 @@ export const v2ProjectRouter = {
 				});
 			}
 			await verifyOrgMembership(ctx.session.user.id, organizationId);
+
+			if (input.githubRepositoryId) {
+				const repo = await dbWs.query.githubRepositories.findFirst({
+					where: and(
+						eq(githubRepositories.id, input.githubRepositoryId),
+						eq(githubRepositories.organizationId, organizationId),
+					),
+				});
+				if (!repo) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "GitHub repository not found in this organization",
+					});
+				}
+			}
+
 			const { id, ...data } = input;
 			const [updated] = await dbWs
 				.update(v2Projects)

@@ -7,28 +7,17 @@ import * as schema from "./schema";
 
 export type HostDb = ReturnType<typeof createDb>;
 
-/**
- * Resolves the migrations folder for host-service's local SQLite DB.
- *
- * - Production (Electron packaged): process.resourcesPath/resources/host-migrations
- * - Dev (ELECTRON_RUN_AS_NODE child process): HOST_MIGRATIONS_PATH env var
- * - Standalone dev (serve.ts): relative from src/db/ to package root drizzle/
- * - Fallback: __dirname-based resolution
- */
 function getMigrationsFolder(): string {
-	// Electron packaged app (resourcesPath is Electron-specific)
 	const resourcesPath = (process as unknown as Record<string, unknown>)
 		.resourcesPath as string | undefined;
 	if (resourcesPath && !process.env.ELECTRON_RUN_AS_NODE) {
 		return join(resourcesPath, "resources/host-migrations");
 	}
 
-	// Dev child process: explicit env var from desktop
 	if (process.env.HOST_MIGRATIONS_PATH) {
 		return process.env.HOST_MIGRATIONS_PATH;
 	}
 
-	// Standalone dev (serve.ts) — import.meta.dirname = src/db/
 	if (typeof import.meta.dirname === "string") {
 		const candidate = join(import.meta.dirname, "../../drizzle");
 		if (existsSync(candidate)) {
@@ -36,7 +25,6 @@ function getMigrationsFolder(): string {
 		}
 	}
 
-	// Fallback
 	return join(__dirname, "../../drizzle");
 }
 

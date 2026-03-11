@@ -1,5 +1,5 @@
 import { dbWs } from "@superset/db/client";
-import { v2Workspaces } from "@superset/db/schema";
+import { v2Devices, v2Projects, v2Workspaces } from "@superset/db/schema";
 import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
@@ -26,6 +26,35 @@ export const v2WorkspaceRouter = {
 				});
 			}
 			await verifyOrgMembership(ctx.session.user.id, organizationId);
+
+			const project = await dbWs.query.v2Projects.findFirst({
+				where: and(
+					eq(v2Projects.id, input.projectId),
+					eq(v2Projects.organizationId, organizationId),
+				),
+			});
+			if (!project) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Project not found in this organization",
+				});
+			}
+
+			if (input.deviceId) {
+				const device = await dbWs.query.v2Devices.findFirst({
+					where: and(
+						eq(v2Devices.id, input.deviceId),
+						eq(v2Devices.organizationId, organizationId),
+					),
+				});
+				if (!device) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "Device not found in this organization",
+					});
+				}
+			}
+
 			const [workspace] = await dbWs
 				.insert(v2Workspaces)
 				.values({
@@ -58,6 +87,22 @@ export const v2WorkspaceRouter = {
 				});
 			}
 			await verifyOrgMembership(ctx.session.user.id, organizationId);
+
+			if (input.deviceId) {
+				const device = await dbWs.query.v2Devices.findFirst({
+					where: and(
+						eq(v2Devices.id, input.deviceId),
+						eq(v2Devices.organizationId, organizationId),
+					),
+				});
+				if (!device) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "Device not found in this organization",
+					});
+				}
+			}
+
 			const { id, ...data } = input;
 			const [updated] = await dbWs
 				.update(v2Workspaces)

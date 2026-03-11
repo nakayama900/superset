@@ -26,12 +26,24 @@ export const projectRouter = router({
 				try {
 					const git = await ctx.git(localProject.repoPath);
 					await git.raw(["worktree", "remove", ws.worktreePath]);
-				} catch {}
+				} catch (err) {
+					console.warn("[project.removeFromDevice] failed to remove worktree", {
+						projectId: input.projectId,
+						worktreePath: ws.worktreePath,
+						err,
+					});
+				}
 			}
 
 			try {
 				rmSync(localProject.repoPath, { recursive: true, force: true });
-			} catch {}
+			} catch (err) {
+				console.warn("[project.removeFromDevice] failed to remove repo dir", {
+					projectId: input.projectId,
+					repoPath: localProject.repoPath,
+					err,
+				});
+			}
 
 			ctx.db.delete(projects).where(eq(projects.id, input.projectId)).run();
 

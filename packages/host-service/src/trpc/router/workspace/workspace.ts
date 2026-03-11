@@ -69,11 +69,23 @@ export const workspaceRouter = router({
 			const git = await ctx.git(localProject.repoPath);
 			await git.raw(["worktree", "add", worktreePath, input.branch]);
 
-			const cloudRow = await ctx.api.v2Workspace.create.mutate({
-				projectId: input.projectId,
-				name: input.name,
-				branch: input.branch,
-			});
+			const cloudRow = await ctx.api.v2Workspace.create
+				.mutate({
+					projectId: input.projectId,
+					name: input.name,
+					branch: input.branch,
+				})
+				.catch(async (err) => {
+					try {
+						await git.raw(["worktree", "remove", worktreePath]);
+					} catch (cleanupErr) {
+						console.warn("[workspace.create] failed to rollback worktree", {
+							worktreePath,
+							cleanupErr,
+						});
+					}
+					throw err;
+				});
 
 			if (cloudRow) {
 				ctx.db
@@ -100,6 +112,8 @@ export const workspaceRouter = router({
 				});
 			}
 
+			await ctx.api.v2Workspace.delete.mutate({ id: input.id });
+
 			const localWorkspace = ctx.db.query.workspaces
 				.findFirst({ where: eq(workspaces.id, input.id) })
 				.sync();
@@ -113,11 +127,15 @@ export const workspaceRouter = router({
 					try {
 						const git = await ctx.git(localProject.repoPath);
 						await git.raw(["worktree", "remove", localWorkspace.worktreePath]);
-					} catch {}
+					} catch (err) {
+						console.warn("[workspace.delete] failed to remove worktree", {
+							workspaceId: input.id,
+							worktreePath: localWorkspace.worktreePath,
+							err,
+						});
+					}
 				}
 			}
-
-			await ctx.api.v2Workspace.delete.mutate({ id: input.id });
 
 			ctx.db.delete(workspaces).where(eq(workspaces.id, input.id)).run();
 
