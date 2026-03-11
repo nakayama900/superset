@@ -26,9 +26,13 @@ import {
 	taskStatuses,
 	tasks,
 	usersSlackUsers,
+	v2DevicePresence,
+	v2Devices,
+	v2Projects,
+	v2UsersDevices,
+	v2Workspaces,
 	workspaces,
 } from "./schema";
-import { v2Devices, v2Projects, v2Workspaces } from "./v2";
 
 export const usersRelations = relations(users, ({ many }) => ({
 	sessions: many(sessions),
@@ -40,6 +44,9 @@ export const usersRelations = relations(users, ({ many }) => ({
 	connectedIntegrations: many(integrationConnections),
 	githubInstallations: many(githubInstallations),
 	devicePresence: many(devicePresence),
+	v2Devices: many(v2Devices),
+	v2UsersDevices: many(v2UsersDevices),
+	v2Workspaces: many(v2Workspaces),
 	agentCommands: many(agentCommands),
 	chatSessions: many(chatSessions),
 }));
@@ -63,6 +70,11 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
 	invitations: many(invitations),
 	subscriptions: many(subscriptions),
 	projects: many(projects),
+	v2Devices: many(v2Devices),
+	v2DevicePresence: many(v2DevicePresence),
+	v2Projects: many(v2Projects),
+	v2UsersDevices: many(v2UsersDevices),
+	v2Workspaces: many(v2Workspaces),
 	secrets: many(secrets),
 	sandboxImages: many(sandboxImages),
 	workspaces: many(workspaces),
@@ -75,9 +87,6 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
 	devicePresence: many(devicePresence),
 	agentCommands: many(agentCommands),
 	chatSessions: many(chatSessions),
-	v2Projects: many(v2Projects),
-	v2Devices: many(v2Devices),
-	v2Workspaces: many(v2Workspaces),
 }));
 
 export const membersRelations = relations(members, ({ one }) => ({
@@ -184,6 +193,7 @@ export const githubRepositoriesRelations = relations(
 		}),
 		pullRequests: many(githubPullRequests),
 		projects: many(projects),
+		v2Projects: many(v2Projects),
 	}),
 );
 
@@ -257,6 +267,83 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
 	workspaces: many(workspaces),
 }));
 
+export const v2ProjectsRelations = relations(v2Projects, ({ one, many }) => ({
+	organization: one(organizations, {
+		fields: [v2Projects.organizationId],
+		references: [organizations.id],
+	}),
+	githubRepository: one(githubRepositories, {
+		fields: [v2Projects.githubRepositoryId],
+		references: [githubRepositories.id],
+	}),
+	workspaces: many(v2Workspaces),
+}));
+
+export const v2DevicesRelations = relations(v2Devices, ({ one, many }) => ({
+	organization: one(organizations, {
+		fields: [v2Devices.organizationId],
+		references: [organizations.id],
+	}),
+	createdBy: one(users, {
+		fields: [v2Devices.createdByUserId],
+		references: [users.id],
+	}),
+	presence: one(v2DevicePresence, {
+		fields: [v2Devices.id],
+		references: [v2DevicePresence.deviceId],
+	}),
+	usersDevices: many(v2UsersDevices),
+	workspaces: many(v2Workspaces),
+}));
+
+export const v2UsersDevicesRelations = relations(v2UsersDevices, ({ one }) => ({
+	organization: one(organizations, {
+		fields: [v2UsersDevices.organizationId],
+		references: [organizations.id],
+	}),
+	user: one(users, {
+		fields: [v2UsersDevices.userId],
+		references: [users.id],
+	}),
+	device: one(v2Devices, {
+		fields: [v2UsersDevices.deviceId],
+		references: [v2Devices.id],
+	}),
+}));
+
+export const v2DevicePresenceRelations = relations(
+	v2DevicePresence,
+	({ one }) => ({
+		organization: one(organizations, {
+			fields: [v2DevicePresence.organizationId],
+			references: [organizations.id],
+		}),
+		device: one(v2Devices, {
+			fields: [v2DevicePresence.deviceId],
+			references: [v2Devices.id],
+		}),
+	}),
+);
+
+export const v2WorkspacesRelations = relations(v2Workspaces, ({ one }) => ({
+	organization: one(organizations, {
+		fields: [v2Workspaces.organizationId],
+		references: [organizations.id],
+	}),
+	project: one(v2Projects, {
+		fields: [v2Workspaces.projectId],
+		references: [v2Projects.id],
+	}),
+	device: one(v2Devices, {
+		fields: [v2Workspaces.deviceId],
+		references: [v2Devices.id],
+	}),
+	createdBy: one(users, {
+		fields: [v2Workspaces.createdByUserId],
+		references: [users.id],
+	}),
+}));
+
 export const secretsRelations = relations(secrets, ({ one }) => ({
 	organization: one(organizations, {
 		fields: [secrets.organizationId],
@@ -326,43 +413,5 @@ export const sessionHostsRelations = relations(sessionHosts, ({ one }) => ({
 	organization: one(organizations, {
 		fields: [sessionHosts.organizationId],
 		references: [organizations.id],
-	}),
-}));
-
-export const v2ProjectsRelations = relations(v2Projects, ({ one, many }) => ({
-	organization: one(organizations, {
-		fields: [v2Projects.organizationId],
-		references: [organizations.id],
-	}),
-	githubRepository: one(githubRepositories, {
-		fields: [v2Projects.githubRepositoryId],
-		references: [githubRepositories.id],
-	}),
-	v2Workspaces: many(v2Workspaces),
-}));
-
-export const v2DevicesRelations = relations(v2Devices, ({ one }) => ({
-	organization: one(organizations, {
-		fields: [v2Devices.organizationId],
-		references: [organizations.id],
-	}),
-}));
-
-export const v2WorkspacesRelations = relations(v2Workspaces, ({ one }) => ({
-	organization: one(organizations, {
-		fields: [v2Workspaces.organizationId],
-		references: [organizations.id],
-	}),
-	project: one(v2Projects, {
-		fields: [v2Workspaces.projectId],
-		references: [v2Projects.id],
-	}),
-	device: one(v2Devices, {
-		fields: [v2Workspaces.deviceId],
-		references: [v2Devices.id],
-	}),
-	createdBy: one(users, {
-		fields: [v2Workspaces.createdByUserId],
-		references: [users.id],
 	}),
 }));

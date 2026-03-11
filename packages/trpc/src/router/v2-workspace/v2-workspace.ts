@@ -13,7 +13,7 @@ export const v2WorkspaceRouter = {
 			z.object({
 				projectId: z.string().uuid(),
 				name: z.string().min(1),
-				branch: z.string().min(1).optional(),
+				branch: z.string().min(1),
 				deviceId: z.string().uuid().optional(),
 			}),
 		)
