@@ -5,7 +5,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { posthog } from "../../lib/posthog";
 
 const AUTH_COMPLETED_KEY = "superset_auth_completed";
-const ACTIVE_ORG_ID_KEY = "superset_active_organization_id";
+const ACTIVE_ORG_ID_KEY = "active_organization_id";
 
 export function PostHogUserIdentifier() {
 	const { data: session } = authClient.useSession();
