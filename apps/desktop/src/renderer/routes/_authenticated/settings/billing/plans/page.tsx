@@ -77,7 +77,10 @@ const PLAN_CARDS: PlanCardData[] = [
 		name: "Pro",
 		price: { monthly: "$20", yearly: "$15" },
 		priceNote: { monthly: "per user/month", yearly: "per user/month" },
-		billingText: { monthly: "Billed monthly", yearly: "$180/year · billed annually" },
+		billingText: {
+			monthly: "Billed monthly",
+			yearly: "$180/year · billed annually",
+		},
 		showBillingToggle: true,
 		actions: [
 			{
