@@ -1,7 +1,6 @@
 import { useParams } from "@tanstack/react-router";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useGitChangesStatus } from "renderer/screens/main/hooks/useGitChangesStatus";
-import { useWorkspaceGitChangesRefresh } from "renderer/screens/main/hooks/useWorkspaceGitChangesRefresh";
 import {
 	RightSidebarTab,
 	useSidebarStore,
@@ -22,13 +21,6 @@ export function ChangesContent() {
 	const { status, isLoading, effectiveBaseBranch } = useGitChangesStatus({
 		worktreePath,
 		refetchOnWindowFocus: !isChangesSidebarVisible,
-	});
-
-	useWorkspaceGitChangesRefresh({
-		workspaceId,
-		worktreePath,
-		defaultBranch: effectiveBaseBranch,
-		enabled: Boolean(workspaceId && worktreePath),
 	});
 
 	if (!worktreePath) {

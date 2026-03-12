@@ -10,7 +10,6 @@ import { useWorkspaceDeleteHandler } from "renderer/react-query/workspaces";
 import { navigateToWorkspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
 import { useBranchSyncInvalidation } from "renderer/screens/main/hooks/useBranchSyncInvalidation";
 import { useGitChangesStatus } from "renderer/screens/main/hooks/useGitChangesStatus";
-import { useWorkspaceGitChangesRefresh } from "renderer/screens/main/hooks/useWorkspaceGitChangesRefresh";
 import { useWorkspaceRename } from "renderer/screens/main/hooks/useWorkspaceRename";
 import { useActiveDragItemStore } from "renderer/stores/active-drag-item";
 import { useTabsStore } from "renderer/stores/tabs/store";
@@ -130,17 +129,10 @@ export function WorkspaceListItem({
 			},
 		);
 
-	const { status: localChanges, effectiveBaseBranch } = useGitChangesStatus({
+	const { status: localChanges } = useGitChangesStatus({
 		worktreePath,
 		enabled: (hasHovered || isActive) && !!worktreePath,
 		staleTime: GITHUB_STATUS_STALE_TIME,
-	});
-
-	useWorkspaceGitChangesRefresh({
-		workspaceId: id,
-		worktreePath,
-		defaultBranch: effectiveBaseBranch,
-		enabled: isActive && Boolean(worktreePath),
 	});
 
 	const { data: aheadBehind, refetch: refetchAheadBehind } =

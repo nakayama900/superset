@@ -14,10 +14,21 @@ import type {
 } from "shared/file-tree-types";
 import { assertRegisteredWorktree } from "./changes/security/path-validation";
 import { getWorkspace } from "./workspaces/utils/db-helpers";
+import { getGitWatchRoots } from "./workspaces/utils/git-client";
 import { execWithShellEnv } from "./workspaces/utils/shell-env";
 import { getWorkspacePath } from "./workspaces/utils/worktree";
 
 const filesystemWatcherManager = new WorkspaceFsWatcherManager();
+const gitMetadataWatcherManager = new WorkspaceFsWatcherManager({
+	ignore: [
+		"**/objects/**",
+		"**/logs/**",
+		"**/hooks/**",
+		"**/info/**",
+		"**/rr-cache/**",
+		"**/lfs/**",
+	],
+});
 const MAX_SEARCH_RESULTS = 500;
 
 export interface WorkspaceKeywordSearchMatch {
@@ -368,6 +379,32 @@ export async function* watchWorkspaceFileSystemEvents(
 	})) {
 		yield toFileSystemChangeEvent(event, rootPath);
 	}
+}
+
+export async function subscribeRegisteredGitMetadataEvents(
+	worktreePath: string,
+	listener: (event: FileSystemChangeEvent) => void,
+): Promise<() => Promise<void>> {
+	assertRegisteredWorktree(worktreePath);
+	const rootPaths = await getGitWatchRoots(worktreePath);
+
+	const cleanups = await Promise.all(
+		rootPaths.map((rootPath) =>
+			gitMetadataWatcherManager.subscribe(
+				{
+					workspaceId: worktreePath,
+					rootPath,
+				},
+				(event) => {
+					listener(toFileSystemChangeEvent(event, rootPath));
+				},
+			),
+		),
+	);
+
+	return async () => {
+		await Promise.all(cleanups.map(async (cleanup) => await cleanup()));
+	};
 }
 
 export async function searchWorkspaceFiles(input: {
