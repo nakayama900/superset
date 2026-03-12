@@ -51,13 +51,12 @@ export function BranchesGroup({ projectId }: BranchesGroupProps) {
 
 	const defaultBranch = data?.defaultBranch ?? "main";
 
-	const branches = (data?.branches ?? [])
-		.sort((a, b) => {
-			if (a.name === defaultBranch) return -1;
-			if (b.name === defaultBranch) return 1;
-			if (a.isLocal !== b.isLocal) return a.isLocal ? -1 : 1;
-			return a.name.localeCompare(b.name);
-		});
+	const branches = (data?.branches ?? []).sort((a, b) => {
+		if (a.name === defaultBranch) return -1;
+		if (b.name === defaultBranch) return 1;
+		if (a.isLocal !== b.isLocal) return a.isLocal ? -1 : 1;
+		return a.name.localeCompare(b.name);
+	});
 
 	const handleCreate = useCallback(
 		(branchName: string) => {
