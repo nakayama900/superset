@@ -5,10 +5,12 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { posthog } from "../../lib/posthog";
 
 const AUTH_COMPLETED_KEY = "superset_auth_completed";
+const ACTIVE_ORG_ID_KEY = "superset_active_organization_id";
 
 export function PostHogUserIdentifier() {
 	const { data: session } = authClient.useSession();
 	const user = session?.user;
+	const activeOrganizationId = session?.session?.activeOrganizationId;
 	const { mutate: setUserId } = electronTrpc.analytics.setUserId.useMutation();
 
 	useEffect(() => {
@@ -31,8 +33,17 @@ export function PostHogUserIdentifier() {
 			posthog.reset();
 			setUserId({ userId: null });
 			localStorage.removeItem(AUTH_COMPLETED_KEY);
+			localStorage.removeItem(ACTIVE_ORG_ID_KEY);
 		}
 	}, [user, session, setUserId]);
+
+	useEffect(() => {
+		if (activeOrganizationId) {
+			localStorage.setItem(ACTIVE_ORG_ID_KEY, activeOrganizationId);
+		} else {
+			localStorage.removeItem(ACTIVE_ORG_ID_KEY);
+		}
+	}, [activeOrganizationId]);
 
 	return null;
 }
