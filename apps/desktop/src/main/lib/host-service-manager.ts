@@ -135,8 +135,6 @@ class HostServiceManager {
 			}
 
 			let buffer = "";
-			let stderrBuffer = "";
-
 			const onData = (data: Buffer) => {
 				buffer += data.toString();
 				const newlineIdx = buffer.indexOf("\n");
@@ -158,30 +156,12 @@ class HostServiceManager {
 				}
 			};
 
-			const onStderr = (data: Buffer) => {
-				stderrBuffer += data.toString();
-			};
-
 			instance.process.stdout?.on("data", onData);
-			instance.process.stderr?.on("data", onStderr);
-
-			instance.process.on("exit", (code) => {
-				instance.process.stdout?.off("data", onData);
-				instance.process.stderr?.off("data", onStderr);
-				reject(
-					new Error(
-						`host-service exited with code ${code} before reporting port.\n${stderrBuffer}`,
-					),
-				);
-			});
 
 			// Timeout after 10s
 			setTimeout(() => {
 				instance.process.stdout?.off("data", onData);
-				instance.process.stderr?.off("data", onStderr);
-				reject(
-					new Error(`Timeout waiting for host-service port.\n${stderrBuffer}`),
-				);
+				reject(new Error("Timeout waiting for host-service port"));
 			}, 10_000);
 		});
 	}
