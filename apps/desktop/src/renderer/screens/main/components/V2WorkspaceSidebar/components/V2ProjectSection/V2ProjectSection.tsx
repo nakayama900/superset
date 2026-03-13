@@ -88,6 +88,7 @@ export function V2ProjectSection({
 		setIsDeleting(true);
 		try {
 			await apiTrpcClient.v2Project.delete.mutate({ id: projectId });
+			setIsDeleteDialogOpen(false);
 			toast.success("Project deleted");
 
 			const isInProject = workspaces.some(

@@ -25,13 +25,11 @@ export function V2DeleteDialog({
 	description,
 	isPending = false,
 }: V2DeleteDialogProps) {
-	const handleConfirm = () => {
-		onConfirm();
-		onOpenChange(false);
-	};
-
 	return (
-		<AlertDialog open={open} onOpenChange={onOpenChange}>
+		<AlertDialog
+			open={open}
+			onOpenChange={isPending ? undefined : onOpenChange}
+		>
 			<AlertDialogContent className="max-w-[340px] gap-0 p-0">
 				<AlertDialogHeader className="px-4 pt-4 pb-2">
 					<AlertDialogTitle className="font-medium">{title}</AlertDialogTitle>
@@ -43,6 +41,7 @@ export function V2DeleteDialog({
 						size="sm"
 						className="h-7 px-3 text-xs"
 						onClick={() => onOpenChange(false)}
+						disabled={isPending}
 					>
 						Cancel
 					</Button>
@@ -50,7 +49,7 @@ export function V2DeleteDialog({
 						variant="destructive"
 						size="sm"
 						className="h-7 px-3 text-xs"
-						onClick={handleConfirm}
+						onClick={onConfirm}
 						disabled={isPending}
 					>
 						{isPending ? "Deleting..." : "Delete"}

@@ -94,6 +94,7 @@ export function V2WorkspaceListItem({
 		setIsDeleting(true);
 		try {
 			await apiTrpcClient.v2Workspace.delete.mutate({ id });
+			setIsDeleteDialogOpen(false);
 			toast.success("Workspace deleted");
 			if (isActive) {
 				navigate({ to: "/" });
