@@ -1,5 +1,4 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { createWriteStream, mkdirSync } from "node:fs";
 import path from "node:path";
 import { app } from "electron";
 import { SUPERSET_HOME_DIR } from "./app-environment";
@@ -89,18 +88,6 @@ class HostServiceManager {
 			env,
 		});
 
-		// TODO: pipe logs to a proper logging system instead of files
-		const logsDir = path.join(SUPERSET_HOME_DIR, "logs");
-		mkdirSync(logsDir, { recursive: true });
-		const logFile = createWriteStream(
-			path.join(logsDir, `host-service-${organizationId}.log`),
-			{ flags: "a" },
-		);
-		const logLine = (prefix: string, data: Buffer) => {
-			const timestamp = new Date().toISOString();
-			logFile.write(`[${timestamp}] ${prefix} ${data.toString()}`);
-		};
-
 		const instance: HostServiceProcess = {
 			process: child,
 			port: null,
@@ -111,9 +98,7 @@ class HostServiceManager {
 
 		this.instances.set(organizationId, instance);
 
-		child.stdout?.on("data", (data: Buffer) => logLine("stdout:", data));
 		child.stderr?.on("data", (data: Buffer) => {
-			logLine("stderr:", data);
 			console.error(
 				`[host-service:${organizationId}] ${data.toString().trim()}`,
 			);
