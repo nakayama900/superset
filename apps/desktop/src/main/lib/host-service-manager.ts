@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { createWriteStream, mkdirSync } from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import { getProcessEnvWithShellPath } from "lib/trpc/routers/workspaces/utils/shell-env";
 import { SUPERSET_HOME_DIR } from "./app-environment";
 
 type HostServiceStatus = "starting" | "running" | "crashed";
@@ -67,16 +67,16 @@ class HostServiceManager {
 		return this.instances.get(organizationId)?.status ?? null;
 	}
 
-	private async spawn(organizationId: string): Promise<number> {
-		const env = await getProcessEnvWithShellPath({
-			...process.env,
+	private spawn(organizationId: string): Promise<number> {
+		const env: Record<string, string> = {
+			...(process.env as Record<string, string>),
 			ELECTRON_RUN_AS_NODE: "1",
 			ORGANIZATION_ID: organizationId,
 			HOST_DB_PATH: path.join(SUPERSET_HOME_DIR, "host.db"),
 			HOST_MIGRATIONS_PATH: app.isPackaged
 				? path.join(process.resourcesPath, "resources/host-migrations")
 				: path.join(app.getAppPath(), "../../packages/host-service/drizzle"),
-		});
+		};
 		if (this.authToken) {
 			env.AUTH_TOKEN = this.authToken;
 		}
@@ -89,6 +89,18 @@ class HostServiceManager {
 			env,
 		});
 
+		// TODO: pipe logs to a proper logging system instead of files
+		const logsDir = path.join(SUPERSET_HOME_DIR, "logs");
+		mkdirSync(logsDir, { recursive: true });
+		const logFile = createWriteStream(
+			path.join(logsDir, `host-service-${organizationId}.log`),
+			{ flags: "a" },
+		);
+		const logLine = (prefix: string, data: Buffer) => {
+			const timestamp = new Date().toISOString();
+			logFile.write(`[${timestamp}] ${prefix} ${data.toString()}`);
+		};
+
 		const instance: HostServiceProcess = {
 			process: child,
 			port: null,
@@ -99,7 +111,9 @@ class HostServiceManager {
 
 		this.instances.set(organizationId, instance);
 
+		child.stdout?.on("data", (data: Buffer) => logLine("stdout:", data));
 		child.stderr?.on("data", (data: Buffer) => {
+			logLine("stderr:", data);
 			console.error(
 				`[host-service:${organizationId}] ${data.toString().trim()}`,
 			);
@@ -136,6 +150,8 @@ class HostServiceManager {
 			}
 
 			let buffer = "";
+			let stderrBuffer = "";
+
 			const onData = (data: Buffer) => {
 				buffer += data.toString();
 				const newlineIdx = buffer.indexOf("\n");
@@ -157,12 +173,30 @@ class HostServiceManager {
 				}
 			};
 
+			const onStderr = (data: Buffer) => {
+				stderrBuffer += data.toString();
+			};
+
 			instance.process.stdout?.on("data", onData);
+			instance.process.stderr?.on("data", onStderr);
+
+			instance.process.on("exit", (code) => {
+				instance.process.stdout?.off("data", onData);
+				instance.process.stderr?.off("data", onStderr);
+				reject(
+					new Error(
+						`host-service exited with code ${code} before reporting port.\n${stderrBuffer}`,
+					),
+				);
+			});
 
 			// Timeout after 10s
 			setTimeout(() => {
 				instance.process.stdout?.off("data", onData);
-				reject(new Error("Timeout waiting for host-service port"));
+				instance.process.stderr?.off("data", onStderr);
+				reject(
+					new Error(`Timeout waiting for host-service port.\n${stderrBuffer}`),
+				);
 			}, 10_000);
 		});
 	}
