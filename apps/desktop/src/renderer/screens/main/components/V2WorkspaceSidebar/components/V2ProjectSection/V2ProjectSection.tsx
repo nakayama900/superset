@@ -12,7 +12,9 @@ interface V2ProjectSectionProps {
 	projectName: string;
 	githubOwner: string | null;
 	isCollapsed: boolean;
+	isSidebarCollapsed?: boolean;
 	workspaces: V2SidebarWorkspace[];
+	shortcutBaseIndex: number;
 	onToggleCollapse: (projectId: string) => void;
 }
 
@@ -21,10 +23,68 @@ export function V2ProjectSection({
 	projectName,
 	githubOwner,
 	isCollapsed,
+	isSidebarCollapsed = false,
 	workspaces,
+	shortcutBaseIndex,
 	onToggleCollapse,
 }: V2ProjectSectionProps) {
 	const openModal = useOpenNewWorkspaceModal();
+
+	if (isSidebarCollapsed) {
+		return (
+			<div className="flex flex-col items-center py-2 border-b border-border last:border-b-0">
+				<Tooltip delayDuration={300}>
+					<TooltipTrigger asChild>
+						<button
+							type="button"
+							onClick={() => onToggleCollapse(projectId)}
+							className={cn(
+								"flex items-center justify-center size-8 rounded-md",
+								"hover:bg-muted/50 transition-colors",
+							)}
+						>
+							<V2ProjectThumbnail
+								projectName={projectName}
+								githubOwner={githubOwner}
+							/>
+						</button>
+					</TooltipTrigger>
+					<TooltipContent side="right" className="flex flex-col gap-0.5">
+						<span className="font-medium">{projectName}</span>
+						<span className="text-xs text-muted-foreground">
+							{workspaces.length} workspace
+							{workspaces.length !== 1 ? "s" : ""}
+						</span>
+					</TooltipContent>
+				</Tooltip>
+
+				<AnimatePresence initial={false}>
+					{!isCollapsed && (
+						<motion.div
+							initial={{ height: 0, opacity: 0 }}
+							animate={{ height: "auto", opacity: 1 }}
+							exit={{ height: 0, opacity: 0 }}
+							transition={{ duration: 0.15, ease: "easeOut" }}
+							className="overflow-hidden w-full"
+						>
+							<div className="flex flex-col items-center gap-1 pt-1">
+								{workspaces.map((workspace, i) => (
+									<V2WorkspaceListItem
+										key={workspace.id}
+										id={workspace.id}
+										name={workspace.name}
+										branch={workspace.branch}
+										shortcutIndex={shortcutBaseIndex + i}
+										isCollapsed
+									/>
+								))}
+							</div>
+						</motion.div>
+					)}
+				</AnimatePresence>
+			</div>
+		);
+	}
 
 	return (
 		<div className="border-b border-border last:border-b-0">
@@ -92,13 +152,13 @@ export function V2ProjectSection({
 						className="overflow-hidden"
 					>
 						<div className="pb-1">
-							{workspaces.map((workspace) => (
+							{workspaces.map((workspace, i) => (
 								<V2WorkspaceListItem
 									key={workspace.id}
 									id={workspace.id}
 									name={workspace.name}
 									branch={workspace.branch}
-									deviceId={workspace.deviceId}
+									shortcutIndex={shortcutBaseIndex + i}
 								/>
 							))}
 						</div>

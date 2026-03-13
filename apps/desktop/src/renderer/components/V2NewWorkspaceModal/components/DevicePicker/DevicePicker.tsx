@@ -8,7 +8,7 @@ import {
 } from "@superset/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
 import { useLiveQuery } from "@tanstack/react-db";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { HiCheck, HiChevronUpDown } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
@@ -63,6 +63,13 @@ export function DevicePicker({
 		);
 	}, [allDevices, localHostDevice, accessibleDeviceIds]);
 
+	// Auto-default to local device when it becomes available
+	useEffect(() => {
+		if (!selectedDeviceId && localHostDevice?.id) {
+			onSelectDevice(localHostDevice.id);
+		}
+	}, [selectedDeviceId, localHostDevice?.id, onSelectDevice]);
+
 	const selectedLabel = useMemo(() => {
 		if (!selectedDeviceId || selectedDeviceId === localHostDevice?.id) {
 			return "This device";
@@ -87,13 +94,16 @@ export function DevicePicker({
 							<CommandItem
 								value="This device"
 								onSelect={() => {
-									onSelectDevice(null);
+									onSelectDevice(localHostDevice?.id ?? null);
 									setOpen(false);
 								}}
 							>
 								This device
 								{localHostDevice ? ` (${localHostDevice.name})` : ""}
-								{!selectedDeviceId && <HiCheck className="ml-auto size-4" />}
+								{(!selectedDeviceId ||
+									selectedDeviceId === localHostDevice?.id) && (
+									<HiCheck className="ml-auto size-4" />
+								)}
 							</CommandItem>
 							{otherDevices.map((device) => (
 								<CommandItem
