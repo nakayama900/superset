@@ -180,13 +180,10 @@ async function ensureMainWorkspace(project: Project): Promise<void> {
 		return;
 	}
 
-	const branch = await getCurrentBranch(project.mainRepoPath);
-	if (!branch) {
-		console.warn(
-			`[ensureMainWorkspace] Could not determine current branch for project ${project.id}`,
-		);
-		return;
-	}
+	const branch =
+		(await getCurrentBranch(project.mainRepoPath)) ||
+		project.defaultBranch ||
+		(await getDefaultBranch(project.mainRepoPath));
 
 	// Unique partial index (projectId WHERE type='branch') prevents duplicates
 	const insertResult = localDb

@@ -26,6 +26,7 @@ import {
 	generateBranchName,
 	getBranchWorktreePath,
 	getCurrentBranch,
+	getDefaultBranch,
 	getPrInfo,
 	getPrLocalBranchName,
 	listBranches,
@@ -559,10 +560,10 @@ export const createCreateProcedures = () => {
 				}
 
 				const branch =
-					input.branch || (await getCurrentBranch(project.mainRepoPath));
-				if (!branch) {
-					throw new Error("Could not determine current branch");
-				}
+					input.branch ||
+					(await getCurrentBranch(project.mainRepoPath)) ||
+					project.defaultBranch ||
+					(await getDefaultBranch(project.mainRepoPath));
 
 				if (input.branch) {
 					await safeCheckoutBranch(project.mainRepoPath, input.branch);

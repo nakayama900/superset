@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, rename } from "node:fs/promises";
+import { access, mkdir, rename } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { BranchPrefixMode } from "@superset/local-db";
@@ -146,6 +146,39 @@ async function checkoutBranchWithHookTolerance({
 
 async function getGitEnv(): Promise<Record<string, string>> {
 	return getProcessEnvWithShellPath();
+}
+
+async function isJjRepository(repoPath: string): Promise<boolean> {
+	try {
+		await access(join(repoPath, ".jj"));
+	} catch {
+		return false;
+	}
+
+	try {
+		await execWithShellEnv("jj", ["root"], {
+			cwd: repoPath,
+			timeout: 10_000,
+		});
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function createJjWorkspace({
+	mainRepoPath,
+	worktreePath,
+	timeout = 120_000,
+}: {
+	mainRepoPath: string;
+	worktreePath: string;
+	timeout?: number;
+}): Promise<void> {
+	await execWithShellEnv("jj", ["workspace", "add", worktreePath], {
+		cwd: mainRepoPath,
+		timeout,
+	});
 }
 
 /**
@@ -548,6 +581,39 @@ export async function createWorktree(
 		const parentDir = join(worktreePath, "..");
 		await mkdir(parentDir, { recursive: true });
 
+		const isJjRepo = await isJjRepository(mainRepoPath);
+		if (isJjRepo) {
+			await createJjWorkspace({ mainRepoPath, worktreePath });
+
+			await checkoutBranchWithHookTolerance({
+				repoPath: worktreePath,
+				targetBranch: branch,
+				run: async () => {
+					await execGitWithShellPath(
+						[
+							"-C",
+							worktreePath,
+							"checkout",
+							"-B",
+							branch,
+							`${startPoint}^{commit}`,
+						],
+						{ timeout: 120_000 },
+					);
+				},
+			});
+
+			await execGitWithShellPath(
+				["-C", worktreePath, "config", "--local", "push.autoSetupRemote", "true"],
+				{ timeout: 10_000 },
+			);
+
+			console.log(
+				`Created JJ workspace at ${worktreePath} with branch ${branch} from ${startPoint}`,
+			);
+			return;
+		}
+
 		await execWorktreeAdd({
 			mainRepoPath,
 			args: [
@@ -622,6 +688,61 @@ export async function createWorktreeFromExistingBranch({
 		const git = await getSimpleGitWithShellPath(mainRepoPath);
 		const localBranches = await git.branchLocal();
 		const branchExistsLocally = localBranches.all.includes(branch);
+		const isJjRepo = await isJjRepository(mainRepoPath);
+
+		if (isJjRepo) {
+			await createJjWorkspace({ mainRepoPath, worktreePath });
+
+			if (branchExistsLocally) {
+				await checkoutBranchWithHookTolerance({
+					repoPath: worktreePath,
+					targetBranch: branch,
+					run: async () => {
+						await execGitWithShellPath(
+							["-C", worktreePath, "checkout", branch],
+							{ timeout: 120_000 },
+						);
+					},
+				});
+			} else {
+				const remoteBranches = await git.branch(["-r"]);
+				const remoteBranchName = `origin/${branch}`;
+				if (remoteBranches.all.includes(remoteBranchName)) {
+					await checkoutBranchWithHookTolerance({
+						repoPath: worktreePath,
+						targetBranch: branch,
+						run: async () => {
+							await execGitWithShellPath(
+								[
+									"-C",
+									worktreePath,
+									"checkout",
+									"--track",
+									"-b",
+									branch,
+									remoteBranchName,
+								],
+								{ timeout: 120_000 },
+							);
+						},
+					});
+				} else {
+					throw new Error(
+						`Branch "${branch}" does not exist locally or on remote`,
+					);
+				}
+			}
+
+			await execGitWithShellPath(
+				["-C", worktreePath, "config", "--local", "push.autoSetupRemote", "true"],
+				{ timeout: 10_000 },
+			);
+
+			console.log(
+				`Created JJ workspace at ${worktreePath} using existing branch ${branch}`,
+			);
+			return;
+		}
 
 		if (branchExistsLocally) {
 			await execWorktreeAdd({
