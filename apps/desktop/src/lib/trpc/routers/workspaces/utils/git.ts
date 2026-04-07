@@ -17,6 +17,7 @@ import { execWithShellEnv, getProcessEnvWithShellPath } from "./shell-env";
 import { resolveTrackingRemoteName } from "./upstream-ref";
 
 const execFileAsync = promisify(execFile);
+const jjRepositoryCache = new Map<string, boolean>();
 
 export class NotGitRepoError extends Error {
 	constructor(repoPath: string) {
@@ -149,19 +150,34 @@ async function getGitEnv(): Promise<Record<string, string>> {
 }
 
 async function isJjRepository(repoPath: string): Promise<boolean> {
+	const normalizedRepoPath = resolve(repoPath);
+	const cached = jjRepositoryCache.get(normalizedRepoPath);
+	if (cached !== undefined) {
+		return cached;
+	}
+
 	try {
-		await access(join(repoPath, ".jj"));
+		await access(join(normalizedRepoPath, ".jj"));
 	} catch {
+		jjRepositoryCache.set(normalizedRepoPath, false);
 		return false;
 	}
 
 	try {
 		await execWithShellEnv("jj", ["root"], {
-			cwd: repoPath,
+			cwd: normalizedRepoPath,
 			timeout: 10_000,
 		});
+		jjRepositoryCache.set(normalizedRepoPath, true);
 		return true;
-	} catch {
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (!message.toLowerCase().includes("enoent")) {
+			console.warn(
+				`[git] Failed to verify JJ repository at ${normalizedRepoPath}: ${message}`,
+			);
+		}
+		jjRepositoryCache.set(normalizedRepoPath, false);
 		return false;
 	}
 }
