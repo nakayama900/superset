@@ -17,7 +17,7 @@ import { execWithShellEnv, getProcessEnvWithShellPath } from "./shell-env";
 import { resolveTrackingRemoteName } from "./upstream-ref";
 
 const execFileAsync = promisify(execFile);
-const jjRepositoryCache = new Map<string, boolean>();
+const JJRepositoryCache = new Map<string, boolean>();
 
 export class NotGitRepoError extends Error {
 	constructor(repoPath: string) {
@@ -149,9 +149,9 @@ async function getGitEnv(): Promise<Record<string, string>> {
 	return getProcessEnvWithShellPath();
 }
 
-async function isJjRepository(repoPath: string): Promise<boolean> {
+async function isJJRepository(repoPath: string): Promise<boolean> {
 	const normalizedRepoPath = resolve(repoPath);
-	const cached = jjRepositoryCache.get(normalizedRepoPath);
+	const cached = JJRepositoryCache.get(normalizedRepoPath);
 	if (cached !== undefined) {
 		return cached;
 	}
@@ -159,7 +159,7 @@ async function isJjRepository(repoPath: string): Promise<boolean> {
 	try {
 		await access(join(normalizedRepoPath, ".jj"));
 	} catch {
-		jjRepositoryCache.set(normalizedRepoPath, false);
+		JJRepositoryCache.set(normalizedRepoPath, false);
 		return false;
 	}
 
@@ -168,7 +168,7 @@ async function isJjRepository(repoPath: string): Promise<boolean> {
 			cwd: normalizedRepoPath,
 			timeout: 10_000,
 		});
-		jjRepositoryCache.set(normalizedRepoPath, true);
+		JJRepositoryCache.set(normalizedRepoPath, true);
 		return true;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -177,12 +177,12 @@ async function isJjRepository(repoPath: string): Promise<boolean> {
 				`[git] Failed to verify JJ repository at ${normalizedRepoPath}: ${message}`,
 			);
 		}
-		jjRepositoryCache.set(normalizedRepoPath, false);
+		JJRepositoryCache.set(normalizedRepoPath, false);
 		return false;
 	}
 }
 
-async function createJjWorkspace({
+async function createJJWorkspace({
 	mainRepoPath,
 	worktreePath,
 	timeout = 120_000,
@@ -597,9 +597,9 @@ export async function createWorktree(
 		const parentDir = join(worktreePath, "..");
 		await mkdir(parentDir, { recursive: true });
 
-		const isJjRepo = await isJjRepository(mainRepoPath);
+		const isJjRepo = await isJJRepository(mainRepoPath);
 		if (isJjRepo) {
-			await createJjWorkspace({ mainRepoPath, worktreePath });
+			await createJJWorkspace({ mainRepoPath, worktreePath });
 
 			await checkoutBranchWithHookTolerance({
 				repoPath: worktreePath,
@@ -704,10 +704,10 @@ export async function createWorktreeFromExistingBranch({
 		const git = await getSimpleGitWithShellPath(mainRepoPath);
 		const localBranches = await git.branchLocal();
 		const branchExistsLocally = localBranches.all.includes(branch);
-		const isJjRepo = await isJjRepository(mainRepoPath);
+		const isJjRepo = await isJJRepository(mainRepoPath);
 
 		if (isJjRepo) {
-			await createJjWorkspace({ mainRepoPath, worktreePath });
+			await createJJWorkspace({ mainRepoPath, worktreePath });
 
 			if (branchExistsLocally) {
 				await checkoutBranchWithHookTolerance({

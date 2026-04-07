@@ -180,10 +180,21 @@ async function ensureMainWorkspace(project: Project): Promise<void> {
 		return;
 	}
 
-	const branch =
-		(await getCurrentBranch(project.mainRepoPath)) ||
-		project.defaultBranch ||
-		(await getDefaultBranch(project.mainRepoPath));
+	let branch = (await getCurrentBranch(project.mainRepoPath)) || null;
+	if (!branch) {
+		branch = project.defaultBranch || null;
+	}
+	if (!branch) {
+		try {
+			branch = await getDefaultBranch(project.mainRepoPath);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.warn(
+				`[ensureMainWorkspace] Could not determine branch for project ${project.id}: ${message}`,
+			);
+			return;
+		}
+	}
 
 	// Unique partial index (projectId WHERE type='branch') prevents duplicates
 	const insertResult = localDb

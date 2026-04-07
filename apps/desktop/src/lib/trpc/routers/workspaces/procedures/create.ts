@@ -559,11 +559,22 @@ export const createCreateProcedures = () => {
 					throw new Error(`Project ${input.projectId} not found`);
 				}
 
-				const branch =
-					input.branch ||
-					(await getCurrentBranch(project.mainRepoPath)) ||
-					project.defaultBranch ||
-					(await getDefaultBranch(project.mainRepoPath));
+				let branch =
+					input.branch || (await getCurrentBranch(project.mainRepoPath)) || null;
+				if (!branch) {
+					branch = project.defaultBranch || null;
+				}
+				if (!branch) {
+					try {
+						branch = await getDefaultBranch(project.mainRepoPath);
+					} catch (error) {
+						const message =
+							error instanceof Error ? error.message : String(error);
+						throw new Error(
+							`Could not determine current branch: ${message}`,
+						);
+					}
+				}
 
 				if (input.branch) {
 					await safeCheckoutBranch(project.mainRepoPath, input.branch);
